@@ -1,0 +1,301 @@
+// This is your Prisma schema file for GeoMine RC-Insight
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============= USERS & AUTHENTICATION =============
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  password      String?
+  role          UserRole @default(VIEWER)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  projects      Project[]
+  auditLogs     AuditLog[]
+
+  @@index([email])
+}
+
+enum UserRole {
+  ADMIN
+  PROJECT_MANAGER
+  GEOPHYSICIST
+  VIEWER
+}
+
+// ============= PROJECTS =============
+
+model Project {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  siteLocation    String?
+  gpsCoordinates  String?  // Format: "lat,lng"
+  status          ProjectStatus @default(ACTIVE)
+  tags            String?  // JSON array of tags
+  createdBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  creator         User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  campaigns       Campaign[]
+
+  @@index([createdBy])
+  @@index([status])
+}
+
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+// ============= CAMPAIGNS =============
+
+model Campaign {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  projectId       String
+  startDate       DateTime?
+  endDate         DateTime?
+  fieldTeam       String?
+  weatherConditions String?
+  equipmentUsed   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  surveyLines     SurveyLine[]
+
+  @@index([projectId])
+}
+
+// ============= SURVEY LINES =============
+
+model SurveyLine {
+  id              String   @id @default(cuid())
+  name            String
+  campaignId      String
+  lineType        LineType
+  azimuth         Float?
+  dipAngle        Float?
+  electrodeSpacing Float?
+  numberOfElectrodes Int?
+  totalLength     Float?
+  topography      String?  // JSON array of [x, y, z] points
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  datasets        Dataset[]
+
+  @@index([campaignId])
+}
+
+enum LineType {
+  POLE_DIPOLE
+  DIPOLE_DIPOLE
+  WENNER
+  SCHLUMBERGER
+  POLE_POLE
+}
+
+// ============= DATASETS =============
+
+model Dataset {
+  id              String   @id @default(cuid())
+  name            String
+  surveyLineId    String
+  dataType        DataType
+  sourceFormat    String?  // CSV, TXT, RES2DINV, etc.
+  fileName        String?
+  fileSize        Int?
+  rawData         String   // JSON: Array of data points
+  metadata        String?  // JSON: Additional metadata
+  isProcessed     Boolean  @default(false)
+  processingHistory String? // JSON: Array of processing operations
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  surveyLine      SurveyLine @relation(fields: [surveyLineId], references: [id], onDelete: Cascade)
+  preprocessedData  PreprocessedData?
+  inversionModels  InversionModel[]
+
+  @@index([surveyLineId])
+  @@index([dataType])
+}
+
+enum DataType {
+  RESISTIVITY
+  CHARGEABILITY
+}
+
+// ============= PREPROCESSED DATA =============
+
+model PreprocessedData {
+  id              String   @id @default(cuid())
+  datasetId       String   @unique
+  filteredData    String   // JSON: Filtered data points
+  outliersRemoved String?  // JSON: Indices of removed outliers
+  topographicCorrection String? // JSON: Correction data
+  normalizationData String? // JSON: Normalization parameters
+  filterSettings  String?  // JSON: Filter parameters used
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  dataset         Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([datasetId])
+}
+
+// ============= INVERSION MODELS =============
+
+model InversionModel {
+  id              String   @id @default(cuid())
+  datasetId       String
+  modelName       String
+  inversionType   InversionType
+  algorithm       String   @default("LEAST_SQUARES")
+  iterations      Int
+  rmsError        Float
+  convergence     Float?
+  regularizationFactor Float?
+  smoothingFactor Float?
+  modelParameters String  // JSON: All inversion parameters
+  modelData       String   // JSON: 2D/3D model results
+  qualityIndicators String? // JSON: Sensitivity, resolution, etc.
+  gridGeometry    String   // JSON: Mesh/grid information
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  dataset         Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  annotations     Annotation[]
+
+  @@index([datasetId])
+  @@index([inversionType])
+}
+
+enum InversionType {
+  RESISTIVITY_2D
+  CHARGEABILITY_2D
+  RESISTIVITY_3D
+  CHARGEABILITY_3D
+  JOINT_INVERSION
+}
+
+// ============= ANNOTATIONS =============
+
+model Annotation {
+  id              String   @id @default(cuid())
+  inversionModelId String
+  type            AnnotationType
+  title           String
+  description     String?
+  geometry        String   // JSON: Shape data (polygon, line, point)
+  properties      String?  // JSON: Additional properties
+  createdBy       String?
+  color           String?  // Hex color code
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  inversionModel  InversionModel @relation(fields: [inversionModelId], references: [id], onDelete: Cascade)
+
+  @@index([inversionModelId])
+}
+
+enum AnnotationType {
+  ANOMALY
+  MINERALIZED_ZONE
+  FAULT
+  INTERPRETATION
+  DRILL_TARGET
+  NOTE
+  MEASUREMENT
+}
+
+// ============= GIS LAYERS =============
+
+model GISLayer {
+  id              String   @id @default(cuid())
+  name            String
+  layerType       GISType
+  projectId       String?
+  fileName        String?
+  filePath        String?
+  format          String?  // GeoJSON, Shapefile, KML
+  data            String?  // JSON: Layer data
+  style           String?  // JSON: Styling information
+  isVisible       Boolean  @default(true)
+  zIndex          Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([layerType])
+}
+
+enum GISType {
+  GEOLOGY
+  BOREHOLES
+  SAMPLES
+  TOPOGRAPHY
+  STRUCTURES
+  CUSTOM
+}
+
+// ============= REPORTS =============
+
+model Report {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  description     String?
+  templateType    String?
+  content         String   // JSON: Report sections and data
+  includedModels  String   // JSON: Array of model IDs
+  generatedAt     DateTime @default(now())
+  generatedBy     String?
+  fileUrl         String?  // Path to generated PDF file
+  status          ReportStatus @default(DRAFT)
+
+  @@index([projectId])
+  @@index([status])
+}
+
+enum ReportStatus {
+  DRAFT
+  GENERATING
+  COMPLETED
+  FAILED
+}
+
+// ============= AUDIT LOG =============
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  action          String
+  entityType      String
+  entityId        String?
+  details         String?  // JSON: Additional details
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
