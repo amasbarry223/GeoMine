@@ -1,141 +1,236 @@
-# 🚀 Welcome to Z.ai Code Scaffold
+# GeoMine RC-Insight - Plateforme d'Analyse Géophysique
 
-A modern, production-ready web application scaffold powered by cutting-edge technologies, designed to accelerate your development with [Z.ai](https://chat.z.ai)'s AI-powered coding assistance.
+## 📋 Vue d'ensemble
 
-## ✨ Technology Stack
+GeoMine RC-Insight est une plateforme web professionnelle pour l'analyse et l'interprétation des données de résistivité et chargeabilité (RC) pour l'exploration minière. Elle permet aux géophysiciens de transformer des données brutes en modèles 2D/3D interprétables en quelques clics.
 
-This scaffold provides a robust foundation built with:
+## ✨ Fonctionnalités Principales
 
-### 🎯 Core Framework
-- **⚡ Next.js 15** - The React framework for production with App Router
-- **📘 TypeScript 5** - Type-safe JavaScript for better developer experience
-- **🎨 Tailwind CSS 4** - Utility-first CSS framework for rapid UI development
+### 🎯 Gestion de Projets
+- Création et gestion de projets d'exploration géophysique
+- Organisation hiérarchique : Projets → Campagnes → Lignes de sondage → Jeux de données
+- Métadonnées GPS et localisation
+- Système de tags et statuts (Actif, Terminé, Archivé)
 
-### 🧩 UI Components & Styling
-- **🧩 shadcn/ui** - High-quality, accessible components built on Radix UI
-- **🎯 Lucide React** - Beautiful & consistent icon library
-- **🌈 Framer Motion** - Production-ready motion library for React
-- **🎨 Next Themes** - Perfect dark mode in 2 lines of code
+### 📥 Import de Données
+- Parser CSV intelligent avec détection automatique de délimiteur
+- Support RES2DINV (.dat) et AGI SuperSting
+- Validation et détection des valeurs aberrantes
+- Rapport de qualité des données
 
-### 📋 Forms & Validation
-- **🎣 React Hook Form** - Performant forms with easy validation
-- **✅ Zod** - TypeScript-first schema validation
+### 📊 Visualisation 2D Interactive
+- Pseudo-sections avec heatmap interactif
+- Échelles de couleur multiples (Viridis, Plasma, Jet, etc.)
+- Contrôles : zoom, pan, grille, contours, opacité
+- Export PNG haute résolution
+- Affichage des valeurs d'électrodes (A, B, M, N)
 
-### 🔄 State Management & Data Fetching
-- **🐻 Zustand** - Simple, scalable state management
-- **🔄 TanStack Query** - Powerful data synchronization for React
-- **🌐 Fetch** - Promise-based HTTP request
+### 🔧 Pré-traitement Avancé
+- **Filtrage du bruit** : Médian, Moyennage mobile, Savitzky-Golay
+- **Détection d'outliers** : IQR, Z-Score, Modified Z-Score, Percentile
+- **Correction topographique** : Simple, Interpolée, Pondérée
+- **Normalisation** : Min-Max, Z-Score, Logarithmique
+- Pipeline complet avec historique des opérations
 
-### 🗄️ Database & Backend
-- **🗄️ Prisma** - Next-generation TypeScript ORM
-- **🔐 NextAuth.js** - Complete open-source authentication solution
+### 🧮 Moteur d'Inversion Géophysique
+- Algorithme Least-Squares 2D avec régularisation de Tikhonov
+- Paramètres configurables (itérations, convergence, régularisation)
+- Indicateurs de qualité (RMS error, convergence, sensibilité)
+- Sauvegarde automatique des modèles inversés
 
-### 🎨 Advanced UI Features
-- **📊 TanStack Table** - Headless UI for building tables and datagrids
-- **🖱️ DND Kit** - Modern drag and drop toolkit for React
-- **📊 Recharts** - Redefined chart library built with React and D3
-- **🖼️ Sharp** - High performance image processing
+### 🎨 Visualisation 3D Volumétrique
+- Rendu volumétrique avec Three.js
+- Contrôles interactifs : rotation, zoom, pan, opacité, seuils
+- Échelles de couleur configurables
+- Grille et contours
 
-### 🌍 Internationalization & Utilities
-- **🌍 Next Intl** - Internationalization library for Next.js
-- **📅 Date-fns** - Modern JavaScript date utility library
-- **🪝 ReactUse** - Collection of essential React hooks for modern development
+### 📈 Analyse Statistique
+- Statistiques descriptives complètes
+- Détection automatique des anomalies (4 méthodes)
+- Corrélations et distributions
+- Analyse spatiale (clustering, gradient)
 
-## 🎯 Why This Scaffold?
+### 📄 Rapports et Exports
+- Génération automatique de rapports PDF
+- Templates personnalisables (complet, inversion, statistique, anomalies, exécutif)
+- Export CSV des données brutes et modèles
+- Sections : couverture, table des matières, texte, tableaux, graphiques
 
-- **🏎️ Fast Development** - Pre-configured tooling and best practices
-- **🎨 Beautiful UI** - Complete shadcn/ui component library with advanced interactions
-- **🔒 Type Safety** - Full TypeScript configuration with Zod validation
-- **📱 Responsive** - Mobile-first design principles with smooth animations
-- **🗄️ Database Ready** - Prisma ORM configured for rapid backend development
-- **🔐 Auth Included** - NextAuth.js for secure authentication flows
-- **📊 Data Visualization** - Charts, tables, and drag-and-drop functionality
-- **🌍 i18n Ready** - Multi-language support with Next Intl
-- **🚀 Production Ready** - Optimized build and deployment settings
-- **🤖 AI-Friendly** - Structured codebase perfect for AI assistance
+### 🗺️ Intégration SIG
+- Import de couches GeoJSON
+- Géoréférencement automatique
+- Opérations géométriques (aire, longueur, buffer, simplification)
+- Calcul de bounding box et centroïde
 
-## 🚀 Quick Start
+## 🚀 Démarrage Rapide
+
+### Prérequis
+- Node.js 18+ ou Bun
+- SQLite (ou PostgreSQL pour la production)
+
+### Installation
 
 ```bash
-# Install dependencies
+# Cloner le dépôt
+git clone https://github.com/amasbarry223/GeoMine.git
+cd GeoMine
+
+# Installer les dépendances
 bun install
+# ou
+npm install
 
-# Start development server
+# Configurer la base de données
+bun run db:push
+
+# Initialiser la base de données avec un utilisateur admin
+bun run db:init
+
+# Lancer le serveur de développement
 bun run dev
-
-# Build for production
-bun run build
-
-# Start production server
-bun start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see your application running.
+L'application sera accessible sur [http://localhost:3000](http://localhost:3000)
 
-## 🤖 Powered by Z.ai
+### Scripts Disponibles
 
-This scaffold is optimized for use with [Z.ai](https://chat.z.ai) - your AI assistant for:
+```bash
+# Développement
+bun run dev              # Serveur de développement
+bun run build           # Build de production
+bun run start           # Serveur de production
 
-- **💻 Code Generation** - Generate components, pages, and features instantly
-- **🎨 UI Development** - Create beautiful interfaces with AI assistance  
-- **🔧 Bug Fixing** - Identify and resolve issues with intelligent suggestions
-- **📝 Documentation** - Auto-generate comprehensive documentation
-- **🚀 Optimization** - Performance improvements and best practices
+# Base de données
+bun run db:push         # Appliquer le schéma Prisma
+bun run db:generate     # Générer le client Prisma
+bun run db:migrate      # Créer une migration
+bun run db:init         # Initialiser la DB avec admin
+bun run db:studio       # Ouvrir Prisma Studio
 
-Ready to build something amazing? Start chatting with Z.ai at [chat.z.ai](https://chat.z.ai) and experience the future of AI-powered development!
+# Utilitaires
+bun run lint            # Linter le code
+```
 
-## 📁 Project Structure
+## 📦 Stack Technique
+
+### Frontend
+- **Next.js 15** - Framework React avec App Router
+- **TypeScript 5** - Typage statique
+- **Tailwind CSS 4** - Framework CSS utilitaire
+- **shadcn/ui** - Composants UI accessibles
+- **Zustand** - Gestion d'état légère
+- **TanStack Query** - Gestion des requêtes serveur
+- **Recharts** - Visualisation 2D
+- **Three.js + React Three Fiber** - Visualisation 3D
+- **jsPDF** - Génération de rapports PDF
+
+### Backend
+- **Next.js API Routes** - API REST
+- **Prisma ORM** - ORM TypeScript
+- **NextAuth.js** - Authentification
+- **SQLite** - Base de données (facilement migrable vers PostgreSQL)
+
+## 📁 Structure du Projet
 
 ```
 src/
-├── app/                 # Next.js App Router pages
-├── components/          # Reusable React components
-│   └── ui/             # shadcn/ui components
-├── hooks/              # Custom React hooks
-└── lib/                # Utility functions and configurations
+├── app/
+│   ├── api/              # Routes API REST
+│   ├── datasets/         # Page import de données
+│   ├── preprocessing/    # Page pré-traitement
+│   ├── inversion/        # Page inversion
+│   ├── visualization-2d/ # Page visualisation 2D
+│   ├── visualization-3d/ # Page visualisation 3D
+│   ├── statistics/       # Page statistiques
+│   ├── gis/             # Page SIG
+│   └── reports/         # Page rapports
+├── components/
+│   ├── geophysic/       # Composants géophysiques
+│   ├── modals/          # Modales
+│   └── ui/              # Composants shadcn/ui
+├── lib/
+│   └── geophysic/       # Bibliothèques métier
+│       ├── dataParser.ts
+│       ├── preprocessing.ts
+│       ├── inversion.ts
+│       ├── statistics.ts
+│       ├── gis.ts
+│       └── reports.ts
+└── types/               # Types TypeScript
 ```
 
-## 🎨 Available Features & Components
+## 🔄 Workflow Utilisateur
 
-This scaffold includes a comprehensive set of modern web development tools:
+1. **Créer un Projet** → Remplir les métadonnées (nom, localisation, GPS)
+2. **Importer des Données** → CSV, RES2DINV, ou AGI SuperSting
+3. **Visualiser** → Pseudo-section 2D interactive
+4. **Pré-traiter** → Filtrer le bruit, corriger la topographie
+5. **Inverser** → Générer un modèle 2D/3D
+6. **Analyser** → Statistiques et détection d'anomalies
+7. **Rapporter** → Générer un PDF professionnel
 
-### 🧩 UI Components (shadcn/ui)
-- **Layout**: Card, Separator, Aspect Ratio, Resizable Panels
-- **Forms**: Input, Textarea, Select, Checkbox, Radio Group, Switch
-- **Feedback**: Alert, Toast (Sonner), Progress, Skeleton
-- **Navigation**: Breadcrumb, Menubar, Navigation Menu, Pagination
-- **Overlay**: Dialog, Sheet, Popover, Tooltip, Hover Card
-- **Data Display**: Badge, Avatar, Calendar
+## 🔐 Authentification
 
-### 📊 Advanced Data Features
-- **Tables**: Powerful data tables with sorting, filtering, pagination (TanStack Table)
-- **Charts**: Beautiful visualizations with Recharts
-- **Forms**: Type-safe forms with React Hook Form + Zod validation
+L'application utilise NextAuth.js pour l'authentification. Un utilisateur admin est créé lors de l'initialisation de la base de données.
 
-### 🎨 Interactive Features
-- **Animations**: Smooth micro-interactions with Framer Motion
-- **Drag & Drop**: Modern drag-and-drop functionality with DND Kit
-- **Theme Switching**: Built-in dark/light mode support
+Par défaut :
+- Email : `admin@geomine.com`
+- Mot de passe : `admin123` (à changer en production !)
 
-### 🔐 Backend Integration
-- **Authentication**: Ready-to-use auth flows with NextAuth.js
-- **Database**: Type-safe database operations with Prisma
-- **API Client**: HTTP requests with Fetch + TanStack Query
-- **State Management**: Simple and scalable with Zustand
+## 📚 Documentation
 
-### 🌍 Production Features
-- **Internationalization**: Multi-language support with Next Intl
-- **Image Optimization**: Automatic image processing with Sharp
-- **Type Safety**: End-to-end TypeScript with Zod validation
-- **Essential Hooks**: 100+ useful React hooks with ReactUse for common patterns
+- [Guide de Déploiement](./DEPLOYMENT.md) - Déploiement sur Vercel
+- [Guide de Déploiement Rapide](./QUICK_DEPLOY.md) - Déploiement rapide
+- [Analyse des Fonctionnalités](./ANALYSE_FONCTIONNALITES.md) - Documentation détaillée
+- [Rapport d'Audit](./AUDIT_REPORT.md) - Audit de sécurité
 
-## 🤝 Get Started with Z.ai
+## 🛠️ Développement
 
-1. **Clone this scaffold** to jumpstart your project
-2. **Visit [chat.z.ai](https://chat.z.ai)** to access your AI coding assistant
-3. **Start building** with intelligent code generation and assistance
-4. **Deploy with confidence** using the production-ready setup
+### Configuration de l'environnement
+
+Créer un fichier `.env.local` :
+
+```env
+# Base de données
+DATABASE_URL="file:./db/custom.db"
+
+# NextAuth
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="votre-secret-aleatoire"
+
+# Optionnel : Variables pour production
+NODE_ENV="development"
+```
+
+### Migration vers PostgreSQL
+
+Le projet supporte facilement PostgreSQL. Modifier `DATABASE_URL` dans `.env.local` :
+
+```env
+DATABASE_URL="postgresql://user:password@localhost:5432/geomine"
+```
+
+Puis utiliser le schéma PostgreSQL :
+
+```bash
+cp prisma/schema.postgresql.prisma prisma/schema.prisma
+bun run db:push
+```
+
+## 🤝 Contribution
+
+Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue ou une pull request.
+
+## 📄 Licence
+
+Propriétaire - GeoMine RC-Insight
+
+## 📞 Support
+
+Pour toute question ou problème, veuillez ouvrir une [issue](https://github.com/amasbarry223/GeoMine/issues).
 
 ---
 
-Built with ❤️ for the developer community. Supercharged by [Z.ai](https://chat.z.ai) 🚀
+**Version** : 1.0.0-beta  
+**Statut** : MVP Complet - Prêt pour tests utilisateurs  
+**Dernière Mise à Jour** : 2024
