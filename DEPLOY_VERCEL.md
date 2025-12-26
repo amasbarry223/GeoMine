@@ -77,24 +77,31 @@ Vercel devrait détecter automatiquement Next.js. Vérifiez que :
 
 #### Variables d'Environnement
 
+⚠️ **IMPORTANT** : Vous DEVEZ configurer ces variables AVANT de cliquer sur Deploy, sinon le build échouera !
+
 Cliquez sur **Environment Variables** et ajoutez :
 
-1. **DATABASE_URL**
+1. **DATABASE_URL** ⚠️ **OBLIGATOIRE**
    - **Name** : `DATABASE_URL`
    - **Value** : Votre chaîne de connexion PostgreSQL (de l'étape 1)
+     - Pour Vercel Postgres : Copiez `POSTGRES_URL` depuis Vercel Storage
+     - Pour Supabase : Format `postgresql://postgres:[PASSWORD]@[HOST]:5432/postgres`
+     - Pour Neon : Votre chaîne de connexion complète
    - **Environments** : ✅ Production, ✅ Preview, ✅ Development
+   - ⚠️ **Sans cette variable, le build échouera avec l'erreur "Environment variable not found: DATABASE_URL"**
 
-2. **NEXTAUTH_SECRET**
+2. **NEXTAUTH_SECRET** ⚠️ **OBLIGATOIRE**
    - **Name** : `NEXTAUTH_SECRET`
    - **Value** : Le secret généré à l'étape 2
    - **Environments** : ✅ Production, ✅ Preview, ✅ Development
 
-3. **NEXTAUTH_URL**
+3. **NEXTAUTH_URL** ⚠️ **OBLIGATOIRE**
    - **Name** : `NEXTAUTH_URL`
    - **Value** : `https://votre-app.vercel.app` (remplacez par votre URL réelle après le premier déploiement)
    - **Environments** : ✅ Production, ✅ Preview, ✅ Development
+   - ⚠️ **Note** : Après le premier déploiement, vous recevrez une URL comme `geomine-xxx.vercel.app`. Mettez à jour `NEXTAUTH_URL` avec cette URL exacte et redéployez.
 
-> ⚠️ **Note** : Après le premier déploiement, vous recevrez une URL comme `geomine-xxx.vercel.app`. Mettez à jour `NEXTAUTH_URL` avec cette URL exacte.
+> 💡 **Astuce** : Le script de build détecte automatiquement PostgreSQL si `DATABASE_URL` contient "postgres" et utilise le bon schéma Prisma.
 
 ### Étape 5 : Déployer
 
