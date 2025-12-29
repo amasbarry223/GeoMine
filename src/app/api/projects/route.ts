@@ -5,14 +5,24 @@ import { handleApiError, createErrorResponse, createSuccessResponse } from '@/li
 import { getUserFromRequest } from '@/lib/get-user-from-request';
 import { canCreateProject } from '@/lib/permissions';
 import { logAuditEvent } from '@/lib/audit';
+import { projectQuerySchema, createProjectSchema, validateQueryParams, validateRequestBody } from '@/lib/validators';
+import { logApiRequest } from '@/lib/logger';
+import { validateCSRF } from '@/lib/csrf';
 
-// GET /api/projects - List all projects with optional filtering
+// GET /api/projects - List all projects with optional filtering and pagination
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
   try {
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const userId = searchParams.get('userId');
+    
+    // Validate query parameters
+    const queryValidation = validateQueryParams(searchParams, projectQuerySchema);
+    if (!queryValidation.success) {
+      return createErrorResponse('Paramètres de requête invalides', 400, queryValidation.details);
+    }
+    
+    const { page, pageSize, status, search, userId } = queryValidation.data;
+    const skip = (page - 1) * pageSize;
 
     const where: any = {};
 
@@ -32,23 +42,56 @@ export async function GET(request: NextRequest) {
       ];
     }
 
+    // Get total count for pagination
+    const total = await db.project.count({ where });
+
+    // Optimized query with select instead of include for better performance
     const projects = await db.project.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        siteLocation: true,
+        gpsCoordinates: true,
+        status: true,
+        tags: true,
+        createdAt: true,
+        updatedAt: true,
+        createdBy: true,
         campaigns: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            startDate: true,
+            endDate: true,
+            _count: {
+              select: {
             surveyLines: true,
+              },
+            },
           },
         },
       },
       orderBy: {
         updatedAt: 'desc',
       },
+      skip,
+      take: pageSize,
     });
 
     return createSuccessResponse(
-      { projects, total: projects.length },
-      `${projects.length} projet${projects.length !== 1 ? 's' : ''} trouvé${projects.length !== 1 ? 's' : ''}`
+      {
+        projects,
+        pagination: {
+          total,
+          page,
+          pageSize,
+          totalPages: Math.ceil(total / pageSize),
+        },
+      },
+      `${total} projet${total !== 1 ? 's' : ''} trouvé${total !== 1 ? 's' : ''}`
     );
   } catch (error) {
     return handleApiError(error, 'GET /api/projects');
@@ -57,24 +100,19 @@ export async function GET(request: NextRequest) {
 
 // POST /api/projects - Create a new project
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
+    // Validate CSRF token
+    const csrfValidation = validateCSRF(request);
+    if (!csrfValidation.valid) {
+      return createErrorResponse(csrfValidation.error || 'Token CSRF invalide', 403);
+    }
+
     // Get authenticated user
     const user = await getUserFromRequest(request);
     if (!user) {
       return createErrorResponse('Non authentifié', 401);
     }
-
-    const body = await request.json();
-    const { 
-      name, 
-      description, 
-      siteLocation, 
-      gpsCoordinates, 
-      tags,
-      duplicateFrom,
-      includeCampaigns,
-      includeData,
-    } = body;
 
     // Check permissions
     const permission = canCreateProject(user);
@@ -82,10 +120,22 @@ export async function POST(request: NextRequest) {
       return createErrorResponse(permission.reason || 'Permission refusée', 403);
     }
 
-    // Validation
-    if (!name || name.trim().length === 0) {
-      return createErrorResponse('Le nom du projet est requis', 400, { field: 'name' });
+    // Validate request body (read once)
+    const bodyValidation = await validateRequestBody(request, createProjectSchema);
+    if (!bodyValidation.success) {
+      return createErrorResponse('Données invalides', 400, bodyValidation.details);
     }
+
+    const { 
+      name, 
+      description, 
+      siteLocation, 
+      gpsCoordinates, 
+      tags,
+      duplicateFrom,
+      includeCampaigns = false,
+      includeData = false,
+    } = bodyValidation.data;
 
     // Handle duplication
     if (duplicateFrom) {
@@ -96,7 +146,11 @@ export async function POST(request: NextRequest) {
             include: {
               surveyLines: includeData ? {
                 include: {
-                  datasets: includeData,
+                  datasets: includeData ? {
+                    include: {
+                      inversionModels: includeData,
+                    },
+                  } : true,
                 },
               } : true,
             },
@@ -108,14 +162,39 @@ export async function POST(request: NextRequest) {
         return createErrorResponse('Projet source non trouvé', 404, { projectId: duplicateFrom });
       }
 
+      // Normalize GPS coordinates
+      let normalizedGpsCoordinates: string | null = null;
+      if (gpsCoordinates) {
+        if (typeof gpsCoordinates === 'string') {
+          normalizedGpsCoordinates = gpsCoordinates;
+        } else if (typeof gpsCoordinates === 'object') {
+          // Handle both {lat, lng} and {latitude, longitude} formats
+          const lat = 'lat' in gpsCoordinates ? gpsCoordinates.lat : ('latitude' in gpsCoordinates ? gpsCoordinates.latitude : null);
+          const lng = 'lng' in gpsCoordinates ? gpsCoordinates.lng : ('longitude' in gpsCoordinates ? gpsCoordinates.longitude : null);
+          if (lat !== null && lng !== null) {
+            normalizedGpsCoordinates = `${lat},${lng}`;
+          }
+        }
+      } else if (sourceProject.gpsCoordinates) {
+        normalizedGpsCoordinates = sourceProject.gpsCoordinates;
+      }
+
+      // Normalize tags
+      let normalizedTags: string | null = null;
+      if (tags && Array.isArray(tags)) {
+        normalizedTags = JSON.stringify(tags);
+      } else if (sourceProject.tags) {
+        normalizedTags = sourceProject.tags;
+      }
+
       // Create duplicated project
       const newProject = await db.project.create({
         data: {
           name: name.trim(),
           description: description?.trim() || sourceProject.description,
           siteLocation: siteLocation?.trim() || sourceProject.siteLocation,
-          gpsCoordinates: gpsCoordinates ? JSON.stringify(gpsCoordinates) : sourceProject.gpsCoordinates,
-          tags: tags ? JSON.stringify(tags) : sourceProject.tags,
+          gpsCoordinates: normalizedGpsCoordinates,
+          tags: normalizedTags,
           createdBy: user.id,
           status: ProjectStatus.ACTIVE,
         },
@@ -157,7 +236,7 @@ export async function POST(request: NextRequest) {
               // Duplicate datasets if requested
               if (surveyLine.datasets) {
                 for (const dataset of surveyLine.datasets) {
-                  await db.dataset.create({
+                  const newDataset = await db.dataset.create({
                     data: {
                       name: dataset.name,
                       surveyLineId: newSurveyLine.id,
@@ -171,6 +250,29 @@ export async function POST(request: NextRequest) {
                       processingHistory: dataset.processingHistory,
                     },
                   });
+
+                  // Duplicate inversion models if requested
+                  if (includeData && dataset.inversionModels) {
+                    for (const inversionModel of dataset.inversionModels) {
+                      await db.inversionModel.create({
+                        data: {
+                          datasetId: newDataset.id,
+                          modelName: inversionModel.modelName,
+                          inversionType: inversionModel.inversionType,
+                          algorithm: inversionModel.algorithm,
+                          iterations: inversionModel.iterations,
+                          rmsError: inversionModel.rmsError,
+                          convergence: inversionModel.convergence,
+                          regularizationFactor: inversionModel.regularizationFactor,
+                          smoothingFactor: inversionModel.smoothingFactor,
+                          modelParameters: inversionModel.modelParameters,
+                          modelData: inversionModel.modelData,
+                          qualityIndicators: inversionModel.qualityIndicators,
+                          gridGeometry: inversionModel.gridGeometry,
+                        },
+                      });
+                    }
+                  }
                 }
               }
             }
@@ -195,14 +297,31 @@ export async function POST(request: NextRequest) {
       return createSuccessResponse(newProject, 'Projet dupliqué avec succès', 201);
     }
 
+    // Normalize GPS coordinates for regular creation
+    let normalizedGpsCoordinates: string | null = null;
+    if (gpsCoordinates) {
+      if (typeof gpsCoordinates === 'string') {
+        normalizedGpsCoordinates = gpsCoordinates;
+      } else if (typeof gpsCoordinates === 'object') {
+        const lat = 'lat' in gpsCoordinates ? gpsCoordinates.lat : ('latitude' in gpsCoordinates ? gpsCoordinates.latitude : null);
+        const lng = 'lng' in gpsCoordinates ? gpsCoordinates.lng : ('longitude' in gpsCoordinates ? gpsCoordinates.longitude : null);
+        if (lat !== null && lng !== null) {
+          normalizedGpsCoordinates = `${lat},${lng}`;
+        }
+      }
+    }
+
+    // Normalize tags
+    const normalizedTags = tags && Array.isArray(tags) ? JSON.stringify(tags) : null;
+
     // Regular project creation
     const project = await db.project.create({
       data: {
         name: name.trim(),
         description: description?.trim() || null,
         siteLocation: siteLocation?.trim() || null,
-        gpsCoordinates: gpsCoordinates ? JSON.stringify(gpsCoordinates) : null,
-        tags: tags ? JSON.stringify(tags) : null,
+        gpsCoordinates: normalizedGpsCoordinates,
+        tags: normalizedTags,
         createdBy: user.id,
         status: ProjectStatus.ACTIVE,
       },

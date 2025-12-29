@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Layers, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sidebar } from './Sidebar';
+import { Breadcrumbs } from '@/components/navigation/Breadcrumbs';
 import { useAppStore } from '@/store/useAppStore';
 
 interface AppLayoutProps {

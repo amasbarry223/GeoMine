@@ -30,6 +30,8 @@ import { DataType } from '@/types/geophysic';
 import AppLayout from '@/components/layout/AppLayout';
 import { useApi } from '@/hooks/use-api';
 import { toast } from '@/hooks/use-toast';
+import { ImportWorkflow } from '@/components/workflows/ImportWorkflow';
+import { useRouter } from 'next/navigation';
 
 interface Campaign {
   id: string;
@@ -56,7 +58,9 @@ const mockSurveyLines: SurveyLine[] = [
 ];
 
 export default function ImportPage() {
+  const router = useRouter();
   const { activeTab, setActiveTab } = useAppStore();
+  const [useWorkflow, setUseWorkflow] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [importProgress, setImportProgress] = useState(0);
@@ -173,19 +177,57 @@ export default function ImportPage() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
+  // Use workflow by default, fallback to old UI if needed
+  if (useWorkflow) {
+    return (
+      <AppLayout headerTitle="Import de Données">
+        <div className="p-6">
+          <div className="max-w-4xl mx-auto">
+            <ImportWorkflow
+              onComplete={(result) => {
+                toast({
+                  title: 'Succès',
+                  description: 'Import terminé avec succès',
+                });
+                if (result?.importResult) {
+                  setImportResults([result.importResult, ...importResults]);
+                }
+                // Rediriger vers la page des datasets après un import réussi
+                setTimeout(() => {
+                  router.push('/datasets');
+                }, 1500);
+              }}
+              onCancel={() => router.push('/')}
+            />
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout headerTitle="Import de Données">
       <div className="p-6">
         <div className="max-w-7xl mx-auto">
           {/* Header */}
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold flex items-center gap-2">
-              <Upload className="w-6 h-6" />
-              Import de Données
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Importez vos fichiers géophysiques dans la base de données
-            </p>
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold flex items-center gap-2">
+                <Upload className="w-6 h-6" />
+                Import de Données
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Importez vos fichiers géophysiques dans la base de données
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => setUseWorkflow(true)}
+              className="gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              Utiliser le workflow guidé
+            </Button>
           </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -210,13 +252,13 @@ export default function ImportPage() {
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".csv,.txt,.dat,.stg"
+                    accept=".csv,.txt,.dat,.stg,.zip"
                     onChange={handleFileSelect}
                     className="hidden"
                   />
                   <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-sm text-muted-foreground mb-2">
-                    Formats supportés: CSV, TXT, RES2DINV (.dat), AGI SuperSting (.stg)
+                    Formats supportés: CSV, TXT, RES2DINV (.dat), AGI SuperSting (.stg), ZIP
                   </p>
                   <p className="text-sm font-medium text-primary">
                     {files.length > 0 ? `${files.length} fichier(s) sélectionné(s)` : 'Cliquez ou glissez-déposez'}

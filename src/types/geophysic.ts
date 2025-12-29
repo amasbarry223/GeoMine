@@ -54,11 +54,18 @@ export interface UpdateProjectInput extends Partial<CreateProjectInput> {
 
 // ============= CAMPAIGN TYPES =============
 
+export enum CampaignType {
+  GEOPHYSICS = 'GEOPHYSICS',
+  GEOCHEMISTRY = 'GEOCHEMISTRY',
+  DRILLING = 'DRILLING',
+}
+
 export interface Campaign {
   id: string;
   name: string;
   description?: string;
   projectId: string;
+  campaignType?: CampaignType;
   startDate?: Date;
   endDate?: Date;
   fieldTeam?: string;
@@ -71,6 +78,7 @@ export interface Campaign {
 export interface CreateCampaignInput {
   name: string;
   projectId: string;
+  campaignType?: CampaignType;
   description?: string;
   startDate?: Date;
   endDate?: Date;

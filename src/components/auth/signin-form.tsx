@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -23,8 +23,12 @@ type SignInFormData = z.infer<typeof signInSchema>;
 
 export function SignInForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // Get callback URL from query params, default to home
+  const callbackUrl = searchParams.get('callbackUrl') || '/';
 
   const {
     register,
@@ -50,7 +54,8 @@ export function SignInForm() {
         toast.error('Échec de la connexion');
       } else {
         toast.success('Connexion réussie');
-        router.push('/');
+        // Redirect to callback URL or home
+        router.push(callbackUrl);
         router.refresh();
       }
     } catch (error) {

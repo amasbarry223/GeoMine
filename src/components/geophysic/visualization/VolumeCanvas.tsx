@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useImperativeHandle, forwardRef, useEffect, useCallback } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Box, Grid, Line, Plane } from '@react-three/drei';
 import * as THREE from 'three';
@@ -25,6 +25,10 @@ interface ViewControls {
   };
 }
 
+export interface VolumeCanvasHandle {
+  resetCamera: () => void;
+}
+
 interface VolumeCanvasProps {
   model: ModelGrid;
   controls: ViewControls;
@@ -47,8 +51,11 @@ function getColorScaleValue(t: number, scale: ColorScale): THREE.Color {
   }
 }
 
-// Volume Cube component
-function VolumeCube({
+// Shared geometry cache - reuse BoxGeometry across renders
+const sharedBoxGeometry = new THREE.BoxGeometry(1, 1, 0.1);
+
+// Volume Cube component with Instanced Rendering optimization
+const VolumeCube = React.memo(function VolumeCube({
   model,
   opacity,
   threshold,
@@ -59,72 +66,154 @@ function VolumeCube({
   threshold: number;
   colorScale: ColorScale;
 }) {
-  const meshRef = useRef<THREE.Mesh>(null);
+  const instancedMeshRef = useRef<THREE.InstancedMesh>(null);
   const values = model.values;
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
-  const range = maxValue - minValue || 1;
+  
+  // Memoize min/max calculations
+  const { minValue, maxValue, range } = useMemo(() => {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return {
+      minValue: min,
+      maxValue: max,
+      range: max - min || 1,
+    };
+  }, [values]);
 
-  const { meshes } = useMemo(() => {
-    const meshArray: Array<{ geometry: THREE.BufferGeometry; material: THREE.Material; position: [number, number, number]; color: THREE.Color }> = [];
+  // Calculate instance data
+  const instanceData = useMemo(() => {
+    const instances: Array<{
+      position: [number, number, number];
+      color: THREE.Color;
+      scale: [number, number, number];
+    }> = [];
+
     for (let i = 0; i < model.dimensions.y; i++) {
       for (let j = 0; j < model.dimensions.x; j++) {
         const index = i * model.dimensions.x + j;
         const value = values[index];
         const normalizedValue = (value - minValue) / range;
         if (normalizedValue < threshold) continue;
+        
         const x = model.coordinates.x[j];
         const y = model.coordinates.y[i];
-        const boxGeometry = new THREE.BoxGeometry(
-          model.gridGeometry.spacing.dx * 0.9,
-          model.gridGeometry.spacing.dy * 0.9,
-          0.1,
-        );
         const color = getColorScaleValue(normalizedValue, colorScale);
-        const material = new THREE.MeshBasicMaterial({
-          color: color,
-          transparent: true,
-          opacity: opacity,
-          side: THREE.DoubleSide,
-        });
-        meshArray.push({
-          geometry: boxGeometry,
-          material,
+        
+        instances.push({
           position: [x, y, 0],
           color,
+          scale: [
+            model.gridGeometry.spacing.dx * 0.9,
+            model.gridGeometry.spacing.dy * 0.9,
+            1,
+          ],
         });
       }
     }
-    return { meshes: meshArray };
-  }, [model, threshold, values, minValue, range, colorScale, opacity]);
+    return instances;
+  }, [model, threshold, values, minValue, range, colorScale]);
 
-  if (meshes.length === 0) {
+  // Create material with opacity and instance colors
+  const material = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: opacity,
+        side: THREE.DoubleSide,
+        vertexColors: true, // Enable for instance colors
+      }),
+    [opacity]
+  );
+
+  // Update instance matrices and colors
+  useEffect(() => {
+    if (!instancedMeshRef.current || instanceData.length === 0) return;
+
+    const mesh = instancedMeshRef.current;
+    const matrix = new THREE.Matrix4();
+
+    // Resize if needed
+    if (mesh.count !== instanceData.length) {
+      mesh.count = instanceData.length;
+      // Create instanceColor attribute if it doesn't exist
+      if (!mesh.instanceColor) {
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(
+          new Float32Array(instanceData.length * 3),
+          3
+        );
+      } else {
+        // Resize the color buffer
+        const newColors = new Float32Array(instanceData.length * 3);
+        mesh.instanceColor = new THREE.InstancedBufferAttribute(newColors, 3);
+      }
+    }
+
+    instanceData.forEach((instance, index) => {
+      // Set matrix (position + scale)
+      matrix.makeScale(...instance.scale);
+      matrix.setPosition(...instance.position);
+      mesh.setMatrixAt(index, matrix);
+      
+      // Set color
+      if (mesh.instanceColor) {
+        mesh.instanceColor.setXYZ(index, instance.color.r, instance.color.g, instance.color.b);
+      }
+    });
+
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true;
+    }
+  }, [instanceData]);
+
+  if (instanceData.length === 0) {
     return null;
   }
 
   return (
-    <>
-      {meshes.map((mesh, index) => (
-        <mesh
-          key={index}
-          ref={index === 0 ? meshRef : undefined}
-          geometry={mesh.geometry}
-          material={mesh.material}
-          position={mesh.position}
-        />
-      ))}
-    </>
+    <instancedMesh
+      ref={instancedMeshRef}
+      args={[sharedBoxGeometry, material, instanceData.length]}
+      frustumCulled={true}
+    />
   );
-}
+});
 
-// Scene component
-function Scene({ model, controls }: { model: ModelGrid; controls: ViewControls }) {
+// Scene component with camera controls
+const Scene = React.memo(function Scene({ 
+  model, 
+  controls,
+  onCameraReady,
+}: { 
+  model: ModelGrid; 
+  controls: ViewControls;
+  onCameraReady?: (resetFn: () => void) => void;
+}) {
   const { camera } = useThree();
+  const controlsRef = useRef<any>(null);
+
+  const handleCameraReady = useCallback(() => {
+    if (onCameraReady && controlsRef.current) {
+      onCameraReady(() => {
+        // Reset camera position
+        camera.position.set(10, 10, 10);
+        camera.lookAt(0, 0, 0);
+        // Reset orbit controls
+        if (controlsRef.current) {
+          controlsRef.current.reset();
+        }
+      });
+    }
+  }, [camera, onCameraReady]);
+
+  useEffect(() => {
+    handleCameraReady();
+  }, [handleCameraReady]);
 
   return (
     <>
       <PerspectiveCamera makeDefault position={[10, 10, 10]} />
-      <OrbitControls enableDamping dampingFactor={0.05} />
+      <OrbitControls ref={controlsRef} enableDamping dampingFactor={0.05} />
       {controls.showGrid && (
         <Grid
           args={[20, 20]}
@@ -216,25 +305,23 @@ function Scene({ model, controls }: { model: ModelGrid; controls: ViewControls }
       )}
       
       {/* Isosurfaces */}
-      {controls.isosurfaces.visible && controls.isosurfaces.levels.length > 0 && (
-        <Isosurfaces
-          model={model}
-          levels={controls.isosurfaces.levels}
-          colorScale={controls.colorScale}
-          opacity={controls.opacity}
-        />
-      )}
+      <Isosurfaces
+        model={model}
+        levels={controls.isosurfaces.visible && controls.isosurfaces.levels.length > 0 ? controls.isosurfaces.levels : []}
+        colorScale={controls.colorScale}
+        opacity={controls.opacity}
+      />
       
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} intensity={1} />
     </>
   );
-}
+});
 
 /**
  * Isosurfaces component using simplified Marching Cubes algorithm
  */
-function Isosurfaces({
+const Isosurfaces = React.memo(function Isosurfaces({
   model,
   levels,
   colorScale,
@@ -245,12 +332,25 @@ function Isosurfaces({
   colorScale: ColorScale;
   opacity: number;
 }) {
+  // Early return after hooks to maintain hook order consistency
   const values = model.values;
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
-  const range = maxValue - minValue || 1;
+  
+  // Memoize min/max calculations
+  const { minValue, maxValue, range } = useMemo(() => {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    return {
+      minValue: min,
+      maxValue: max,
+      range: max - min || 1,
+    };
+  }, [values]);
 
   const isosurfaceMeshes = useMemo(() => {
+    // Return empty array if no levels provided
+    if (levels.length === 0) {
+      return [];
+    }
     const meshes: Array<{ geometry: THREE.BufferGeometry; material: THREE.MeshBasicMaterial; level: number }> = [];
 
     levels.forEach((level) => {
@@ -327,13 +427,35 @@ function Isosurfaces({
       ))}
     </>
   );
-}
+});
 
-export default function VolumeCanvas({ model, controls }: VolumeCanvasProps) {
+const VolumeCanvas = forwardRef<VolumeCanvasHandle, VolumeCanvasProps>(({ model, controls }, ref) => {
+  const resetCameraRef = useRef<(() => void) | null>(null);
+
+  const handleCameraReady = useCallback((resetFn: () => void) => {
+    resetCameraRef.current = resetFn;
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    resetCamera: () => {
+      if (resetCameraRef.current) {
+        resetCameraRef.current();
+      }
+    },
+  }), []);
+
   return (
     <Canvas>
-      <Scene model={model} controls={controls} />
+      <Scene 
+        model={model} 
+        controls={controls}
+        onCameraReady={handleCameraReady}
+      />
     </Canvas>
   );
-}
+});
+
+VolumeCanvas.displayName = 'VolumeCanvas';
+
+export default VolumeCanvas;
 

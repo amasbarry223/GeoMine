@@ -152,6 +152,9 @@ export default function Visualization2DPage() {
           description="Visualisation des données de résistivité"
           showControls={true}
           height={600}
+          colorScale={colorScale}
+          showGrid={showGrid}
+          showContours={showContours}
         />
 
         {/* Model Visualization */}
@@ -161,6 +164,9 @@ export default function Visualization2DPage() {
           description="Modèle inversé avec algorithme Least-Squares"
           showControls={true}
           height={600}
+          colorScale={colorScale}
+          showGrid={showGrid}
+          showContours={showContours}
         />
       </div>
 

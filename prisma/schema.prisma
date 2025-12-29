@@ -52,6 +52,8 @@ model Project {
 
   @@index([createdBy])
   @@index([status])
+  @@index([status, createdAt])
+  @@index([createdAt])
 }
 
 enum ProjectStatus {
@@ -67,6 +69,7 @@ model Campaign {
   name            String
   description     String?
   projectId       String
+  campaignType    CampaignType @default(GEOPHYSICS)
   startDate       DateTime?
   endDate         DateTime?
   fieldTeam       String?
@@ -77,8 +80,17 @@ model Campaign {
 
   project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   surveyLines     SurveyLine[]
+  geochemicalSamples GeochemicalSample[]
+  drillHoles      DrillHole[]
 
   @@index([projectId])
+  @@index([campaignType])
+}
+
+enum CampaignType {
+  GEOPHYSICS
+  GEOCHEMISTRY
+  DRILLING
 }
 
 // ============= SURVEY LINES =============
@@ -134,6 +146,8 @@ model Dataset {
 
   @@index([surveyLineId])
   @@index([dataType])
+  @@index([createdAt])
+  @@index([isProcessed])
 }
 
 enum DataType {
@@ -278,6 +292,197 @@ enum ReportStatus {
   GENERATING
   COMPLETED
   FAILED
+}
+
+// ============= GEOCHEMISTRY =============
+
+model GeochemicalSample {
+  id              String   @id @default(cuid())
+  campaignId      String
+  holeID          String?
+  sampleID        String   @unique
+  surfSampleType  String?
+  qcRef           String?
+  dupID           String?
+  sampleStatus    String?
+  depth_cm        Float?
+  x               Float?
+  y               Float?
+  z               Float?
+  utmZone         String?
+  surveyMethod    String?
+  weathering      String?
+  color            String?
+  grainSize        String?
+  regolith         String?
+  litho1           String?
+  litho2           String?
+  veinType         String?
+  veinAbd           String?
+  sulphideType     String?
+  sulphideAbd      String?
+  areaDescription  String?
+  operator         String?
+  geologist        String?
+  date             DateTime?
+  comments         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  campaign         Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  assays           GeochemicalAssay[]
+  
+  @@index([campaignId])
+  @@index([sampleID])
+  @@index([holeID])
+  @@index([date])
+  @@index([geologist])
+  @@index([weathering])
+  @@index([litho1])
+  @@index([sampleStatus])
+}
+
+model GeochemicalAssay {
+  id              String   @id @default(cuid())
+  sampleId        String
+  element         String   // Au, Ag, Cu, Pb, Zn, etc.
+  value           Float
+  unit            String   @default("ppm")
+  detectionLimit  Float?
+  method          String?
+  lab             String?
+  labRef          String?
+  createdAt       DateTime @default(now())
+  
+  sample          GeochemicalSample @relation(fields: [sampleId], references: [id], onDelete: Cascade)
+  
+  @@index([sampleId])
+  @@index([element])
+  @@index([sampleId, element])
+  @@index([lab])
+}
+
+// ============= DRILLING =============
+
+model DrillHole {
+  id              String   @id @default(cuid())
+  campaignId      String
+  holeID          String   @unique
+  drillType       DrillType
+  collarX         Float
+  collarY         Float
+  collarZ         Float
+  azimuth         Float?
+  dip             Float?
+  totalDepth      Float?
+  utmZone         String?
+  startDate       DateTime?
+  endDate         DateTime?
+  contractor      String?
+  rigType         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  campaign        Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  surveys         DrillSurvey[]
+  geology         GeologyLog[]
+  assays          DrillAssay[]
+  structures      StructuralMeasurement[]
+  
+  @@index([campaignId])
+  @@index([holeID])
+  @@index([drillType])
+}
+
+enum DrillType {
+  ACORE
+  RAB
+  AUGER
+  RC
+  DIAMOND
+}
+
+model DrillSurvey {
+  id              String   @id @default(cuid())
+  drillHoleId     String
+  depth           Float
+  azimuth         Float?
+  dip             Float?
+  toolFace        Float?
+  createdAt       DateTime @default(now())
+  
+  drillHole       DrillHole @relation(fields: [drillHoleId], references: [id], onDelete: Cascade)
+  
+  @@index([drillHoleId])
+  @@index([depth])
+}
+
+model GeologyLog {
+  id              String   @id @default(cuid())
+  drillHoleId     String
+  fromDepth       Float
+  toDepth         Float
+  lithology       String?
+  alteration      String?
+  mineralization  String?
+  weathering      String?
+  color            String?
+  texture          String?
+  structure        String?
+  notes            String?
+  geologist        String?
+  logDate          DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  drillHole        DrillHole @relation(fields: [drillHoleId], references: [id], onDelete: Cascade)
+  
+  @@index([drillHoleId])
+  @@index([fromDepth, toDepth])
+  @@index([lithology])
+  @@index([geologist])
+  @@index([logDate])
+}
+
+model DrillAssay {
+  id              String   @id @default(cuid())
+  drillHoleId     String
+  sampleID         String?
+  fromDepth        Float
+  toDepth          Float
+  element          String
+  value            Float
+  unit             String   @default("ppm")
+  detectionLimit   Float?
+  method           String?
+  lab              String?
+  createdAt        DateTime @default(now())
+  
+  drillHole        DrillHole @relation(fields: [drillHoleId], references: [id], onDelete: Cascade)
+  
+  @@index([drillHoleId])
+  @@index([sampleID])
+  @@index([element])
+  @@index([fromDepth, toDepth])
+}
+
+model StructuralMeasurement {
+  id              String   @id @default(cuid())
+  drillHoleId     String
+  depth            Float
+  direction        Float   // Azimuth en degrés
+  dip              Float   // Plongement en degrés
+  structureType    String? // Faille, joint, foliation, etc.
+  description      String?
+  geologist        String?
+  measurementDate  DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  drillHole        DrillHole @relation(fields: [drillHoleId], references: [id], onDelete: Cascade)
+  
+  @@index([drillHoleId])
+  @@index([depth])
 }
 
 // ============= AUDIT LOG =============

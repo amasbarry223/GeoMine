@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,6 +34,10 @@ interface PseudoSectionProps {
   onDataPointClick?: (point: DataPoint) => void;
   showControls?: boolean;
   height?: number;
+  // External control props (optional - if provided, will override internal state)
+  colorScale?: ColorScale;
+  showGrid?: boolean;
+  showContours?: boolean;
 }
 
 interface VisualizationControls {
@@ -128,7 +132,7 @@ function generateHeatmapData(data: DataPoint[], colorScale: ColorScale, min: num
 }
 
 // Canvas component for rendering heatmap
-function HeatmapCanvas({
+const HeatmapCanvas = React.memo(function HeatmapCanvas({
   heatmapData,
   xValues,
   yValues,
@@ -206,7 +210,7 @@ function HeatmapCanvas({
     }
   }, [heatmapData, xValues, yValues, opacity, showGrid, height]);
 
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -228,7 +232,7 @@ function HeatmapCanvas({
         onPointClick(point);
       }
     }
-  };
+  }, [heatmapData, xValues, yValues, onPointClick]);
 
   return (
     <div ref={containerRef} className="w-full h-full relative">
@@ -239,7 +243,7 @@ function HeatmapCanvas({
       />
     </div>
   );
-}
+});
 
 export default function PseudoSectionRecharts({
   data,
@@ -248,13 +252,16 @@ export default function PseudoSectionRecharts({
   onDataPointClick,
   showControls = true,
   height = 600,
+  colorScale: externalColorScale,
+  showGrid: externalShowGrid,
+  showContours: externalShowContours,
 }: PseudoSectionProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [controls, setControls] = useState<VisualizationControls>({
-    colorScale: ColorScale.VIRIDIS,
-    showGrid: true,
-    showContours: true,
+    colorScale: externalColorScale || ColorScale.VIRIDIS,
+    showGrid: externalShowGrid !== undefined ? externalShowGrid : true,
+    showContours: externalShowContours !== undefined ? externalShowContours : true,
     contourLevels: 10,
     opacity: 1,
     colorRange: { min: 0, max: 100 },
@@ -262,6 +269,25 @@ export default function PseudoSectionRecharts({
 
   const [selectedPoint, setSelectedPoint] = useState<DataPoint | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+
+  // Sync external props with internal state
+  useEffect(() => {
+    if (externalColorScale !== undefined) {
+      setControls((prev) => ({ ...prev, colorScale: externalColorScale }));
+    }
+  }, [externalColorScale]);
+
+  useEffect(() => {
+    if (externalShowGrid !== undefined) {
+      setControls((prev) => ({ ...prev, showGrid: externalShowGrid }));
+    }
+  }, [externalShowGrid]);
+
+  useEffect(() => {
+    if (externalShowContours !== undefined) {
+      setControls((prev) => ({ ...prev, showContours: externalShowContours }));
+    }
+  }, [externalShowContours]);
 
   // Calculate automatic color range from data
   useEffect(() => {
@@ -292,7 +318,7 @@ export default function PseudoSectionRecharts({
     return levels;
   }, [controls.showContours, controls.contourLevels, controls.colorRange]);
 
-  const handlePointClick = (point: { x: number; y: number; value: number }) => {
+  const handlePointClick = useCallback((point: { x: number; y: number; value: number }) => {
     const dataPoint = data.find((d) => d.x === point.x && d.y === point.y);
     if (dataPoint) {
       setSelectedPoint(dataPoint);
@@ -300,42 +326,9 @@ export default function PseudoSectionRecharts({
         onDataPointClick(dataPoint);
       }
     }
-  };
+  }, [data, onDataPointClick]);
 
-  const handleExport = () => {
-    // Export as PNG (using canvas)
-    const canvas = canvasRef.current;
-    if (canvas) {
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${title || 'pseudo-section'}.png`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }
-      }, 'image/png');
-    }
-  };
-
-  const handleExportSVG = () => {
-    // Export as SVG
-    const svgContent = generateSVG();
-    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title || 'pseudo-section'}.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const generateSVG = (): string => {
+  const generateSVG = useCallback((): string => {
     // Generate SVG representation of the visualization
     const width = 800;
     const height = 600;
@@ -359,11 +352,44 @@ export default function PseudoSectionRecharts({
 
     svg += '</svg>';
     return svg;
-  };
+  }, [data, controls.colorScale]);
 
-  const handleResetView = () => {
+  const handleExport = useCallback(() => {
+    // Export as PNG (using canvas)
+    const canvas = canvasRef.current;
+    if (canvas) {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${title || 'pseudo-section'}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+      }, 'image/png');
+    }
+  }, [title]);
+
+  const handleExportSVG = useCallback(() => {
+    // Export as SVG
+    const svgContent = generateSVG();
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title || 'pseudo-section'}.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [title, generateSVG]);
+
+  const handleResetView = useCallback(() => {
     setZoomLevel(1);
-  };
+  }, []);
 
   return (
     <Card className="w-full">

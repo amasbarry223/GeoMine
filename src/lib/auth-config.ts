@@ -1,6 +1,6 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { compare } from 'bcrypt';
+import { compare, hash } from 'bcrypt';
 import { db } from '@/lib/db';
 
 export const authOptions: NextAuthOptions = {
@@ -12,40 +12,88 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
+        console.log('[AUTH] ===== AUTHORIZE CALLED =====');
+        console.log('[AUTH] Credentials received:', {
+          email: credentials?.email,
+          emailType: typeof credentials?.email,
+          emailLength: credentials?.email?.length,
+          passwordProvided: !!credentials?.password,
+          passwordLength: credentials?.password?.length,
+        });
+
         if (!credentials?.email || !credentials?.password) {
-          console.log('[AUTH] Missing credentials');
+          console.log('[AUTH] ❌ Missing credentials');
           return null;
         }
 
         try {
           console.log('[AUTH] Attempting login for:', credentials.email);
           
-          // Find user by email
+          // Find user by email (exact match, normalize email to lowercase)
+          const normalizedEmail = credentials.email.toLowerCase().trim();
           const user = await db.user.findUnique({
-            where: { email: credentials.email },
+            where: { email: normalizedEmail },
           });
 
           if (!user) {
-            console.log('[AUTH] User not found:', credentials.email);
+            console.log('[AUTH] User not found:', normalizedEmail);
+            // List all users for debugging
+            try {
+              const allUsers = await db.user.findMany({ select: { email: true } });
+              console.log('[AUTH] Available users:', allUsers.map(u => u.email));
+            } catch (e) {
+              console.log('[AUTH] Could not list users:', e);
+            }
             return null;
           }
 
           if (!user.password) {
             console.log('[AUTH] User has no password set:', credentials.email);
+            console.log('[AUTH] User ID:', user.id);
             return null;
           }
 
-          console.log('[AUTH] User found, verifying password...');
+          console.log('[AUTH] User found:', user.email);
+          console.log('[AUTH] Password hash length:', user.password.length);
+          console.log('[AUTH] Password hash preview:', user.password.substring(0, 20) + '...');
+          console.log('[AUTH] Verifying password...');
+          console.log('[AUTH] Password provided:', credentials.password.length, 'characters');
 
           // Verify password
-          const isValid = await compare(credentials.password, user.password);
-
-          if (!isValid) {
-            console.log('[AUTH] Invalid password for:', credentials.email);
+          let isValid = false;
+          try {
+            isValid = await compare(credentials.password, user.password);
+            console.log('[AUTH] Password comparison result:', isValid);
+          } catch (compareError) {
+            console.error('[AUTH] Error comparing password:', compareError);
             return null;
           }
 
-          console.log('[AUTH] Login successful for:', credentials.email);
+          if (!isValid) {
+            console.log('[AUTH] ❌ Invalid password for:', credentials.email);
+            console.log('[AUTH] Password provided:', credentials.password);
+            console.log('[AUTH] Password hash in DB:', user.password.substring(0, 30) + '...');
+            
+            // Test bcrypt functionality
+            if (credentials.email.toLowerCase() === 'admin@geomine.com') {
+              console.log('[AUTH] Debug: Testing bcrypt functionality...');
+              try {
+                const testHash = await hash('admin123', 10);
+                const testCompare = await compare('admin123', testHash);
+                console.log('[AUTH] Debug: Bcrypt test hash/compare:', testCompare ? '✅ WORKS' : '❌ FAILED');
+                
+                // Try to compare with a fresh hash of admin123
+                const freshHash = await hash('admin123', 10);
+                const freshCompare = await compare('admin123', freshHash);
+                console.log('[AUTH] Debug: Fresh hash comparison:', freshCompare ? '✅ WORKS' : '❌ FAILED');
+              } catch (bcryptError) {
+                console.error('[AUTH] Debug: Bcrypt error:', bcryptError);
+              }
+            }
+            return null;
+          }
+
+          console.log('[AUTH] ✅ Login successful for:', credentials.email);
 
           // Return user object (without password)
           return {

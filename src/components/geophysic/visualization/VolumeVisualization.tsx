@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useImperativeHandle, forwardRef, useRef, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { useDebounce } from '@/hooks/use-debounce';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -28,6 +29,7 @@ import {
 import { ModelGrid, ColorScale } from '@/types/geophysic';
 import { exportToOBJ, exportToSTL, downloadFile } from '@/lib/geophysic/exports';
 import { CrossSectionControls } from './CrossSectionControls';
+import { toggleFullscreen } from '@/lib/utils/fullscreen';
 
 // Dynamically import the 3D canvas component to avoid SSR issues with react-three
 const DynamicVolumeCanvas = dynamic(
@@ -52,11 +54,15 @@ interface VolumeVisualizationProps {
   showControls?: boolean;
 }
 
+export interface VolumeVisualizationHandle {
+  resetView: () => void;
+}
+
 interface ViewControls {
   opacity: number;
   threshold: number;
   showGrid: boolean;
-  showBoundingBox: true;
+  showBoundingBox: boolean;
   colorScale: ColorScale;
   showContours: boolean;
   contourLevels: number;
@@ -64,6 +70,10 @@ interface ViewControls {
     xy: { position: number; visible: boolean };
     xz: { position: number; visible: boolean };
     yz: { position: number; visible: boolean };
+  };
+  isosurfaces: {
+    levels: number[];
+    visible: boolean;
   };
 }
 
@@ -73,12 +83,19 @@ interface ViewControls {
 // Note: All 3D rendering components (VolumeCube, Scene, ContourLines) have been moved to VolumeCanvas.tsx
 // This file now only handles the UI controls and uses DynamicVolumeCanvas for rendering
 
-export default function VolumeVisualization({
+const VolumeVisualization = forwardRef<VolumeVisualizationHandle, VolumeVisualizationProps>(({
   model,
   title = 'Modèle 3D',
   description,
   showControls = true,
-}: VolumeVisualizationProps) {
+}, ref) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<{ resetCamera?: () => void }>(null);
+  // Calculate default z position safely
+  const defaultZPosition = model.coordinates.z && model.coordinates.z.length > 0
+    ? model.coordinates.z[Math.floor(model.coordinates.z.length / 2)]
+    : 0;
+
   const [controls, setControls] = useState<ViewControls>({
     opacity: 0.8,
     threshold: 0.2,
@@ -88,7 +105,7 @@ export default function VolumeVisualization({
     showContours: false,
     contourLevels: 5,
     crossSections: {
-      xy: { position: model.coordinates.z?.[Math.floor((model.coordinates.z?.length || 1) / 2)] || 0, visible: false },
+      xy: { position: defaultZPosition, visible: false },
       xz: { position: model.coordinates.y[Math.floor(model.coordinates.y.length / 2)], visible: false },
       yz: { position: model.coordinates.x[Math.floor(model.coordinates.x.length / 2)], visible: false },
     },
@@ -98,10 +115,48 @@ export default function VolumeVisualization({
     },
   });
 
-  // Calculate value range
-  const minValue = Math.min(...model.values);
-  const maxValue = Math.max(...model.values);
-  const valueRange = maxValue - minValue;
+  // Expose resetView method via ref
+  useImperativeHandle(ref, () => ({
+    resetView: () => {
+      // Reset camera if canvas ref is available
+      if (canvasRef.current?.resetCamera) {
+        canvasRef.current.resetCamera();
+      }
+      // Reset controls to default
+      setControls((prev) => ({
+        ...prev,
+        opacity: 0.8,
+        threshold: 0.2,
+        crossSections: {
+          xy: { position: defaultZPosition, visible: false },
+          xz: { position: model.coordinates.y[Math.floor(model.coordinates.y.length / 2)], visible: false },
+          yz: { position: model.coordinates.x[Math.floor(model.coordinates.x.length / 2)], visible: false },
+        },
+      }));
+    },
+  }));
+
+  // Calculate value range (memoized)
+  const { minValue, maxValue, valueRange } = useMemo(() => {
+    const min = Math.min(...model.values);
+    const max = Math.max(...model.values);
+    return {
+      minValue: min,
+      maxValue: max,
+      valueRange: max - min,
+    };
+  }, [model.values]);
+
+  // Debounce opacity and threshold for better performance
+  const debouncedOpacity = useDebounce(controls.opacity, 100);
+  const debouncedThreshold = useDebounce(controls.threshold, 150);
+
+  // Memoize controls with debounced values for rendering
+  const renderControls = useMemo(() => ({
+    ...controls,
+    opacity: debouncedOpacity,
+    threshold: debouncedThreshold,
+  }), [controls, debouncedOpacity, debouncedThreshold]);
 
   const handleExportOBJ = () => {
     const objContent = exportToOBJ(model, `${title || 'model'}.obj`);
@@ -135,8 +190,41 @@ export default function VolumeVisualization({
     }));
   };
 
+  const handleFullscreen = async () => {
+    if (containerRef.current) {
+      try {
+        await toggleFullscreen(containerRef.current);
+      } catch (error) {
+        console.error('Error toggling fullscreen:', error);
+      }
+    }
+  };
+
+  const handleResetView = () => {
+    if (canvasRef.current?.resetCamera) {
+      canvasRef.current.resetCamera();
+    }
+    setControls((prev) => ({
+      ...prev,
+      opacity: 0.8,
+      threshold: 0.2,
+      crossSections: {
+        xy: { position: defaultZPosition, visible: false },
+        xz: { position: model.coordinates.y[Math.floor(model.coordinates.y.length / 2)], visible: false },
+        yz: { position: model.coordinates.x[Math.floor(model.coordinates.x.length / 2)], visible: false },
+      },
+    }));
+  };
+
+  const handleTopView = () => {
+    if (canvasRef.current?.resetCamera) {
+      canvasRef.current.resetCamera();
+    }
+    // Top view will be handled by the camera reset in VolumeCanvas
+  };
+
   return (
-    <Card className="w-full">
+    <Card className="w-full" ref={containerRef}>
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -158,7 +246,7 @@ export default function VolumeVisualization({
               <Download className="w-4 h-4 mr-1" />
               STL
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={handleFullscreen}>
               <Maximize2 className="w-4 h-4 mr-1" />
               Plein écran
             </Button>
@@ -170,7 +258,7 @@ export default function VolumeVisualization({
           {/* 3D Viewport */}
           <div className="flex-1">
             <div className="aspect-square bg-slate-900 rounded-lg overflow-hidden">
-              <DynamicVolumeCanvas model={model} controls={controls} />
+              <DynamicVolumeCanvas model={model} controls={renderControls} ref={canvasRef} />
             </div>
 
             {/* Value range display */}
@@ -388,11 +476,11 @@ export default function VolumeVisualization({
                     <div className="space-y-2">
                       <Label>Vue</Label>
                       <div className="grid grid-cols-2 gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setControls((prev) => ({ ...prev }))}>
+                        <Button variant="outline" size="sm" onClick={handleResetView}>
                           <RotateCw className="w-4 h-4 mr-1" />
                           Reset
                         </Button>
-                        <Button variant="outline" size="sm">
+                        <Button variant="outline" size="sm" onClick={handleTopView}>
                           <Maximize2 className="w-4 h-4 mr-1" />
                           Vue de dessus
                         </Button>
@@ -440,4 +528,12 @@ export default function VolumeVisualization({
       </CardContent>
     </Card>
   );
-}
+});
+
+VolumeVisualization.displayName = 'VolumeVisualization';
+
+// Named export for better compatibility with dynamic imports
+export { VolumeVisualization };
+
+// Default export
+export default VolumeVisualization;

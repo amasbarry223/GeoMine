@@ -1,0 +1,507 @@
+openapi: 3.0.0
+info:
+  title: GeoMine RC-Insight API
+  description: API pour la gestion des données géophysiques, géochimiques et de sondages
+  version: 1.0.0
+  contact:
+    name: GeoMine Support
+    email: support@geomine.com
+
+servers:
+  - url: http://localhost:3000/api
+    description: Serveur de développement
+  - url: https://api.geomine.com
+    description: Serveur de production
+
+tags:
+  - name: Projects
+    description: Gestion des projets
+  - name: Geochemistry
+    description: Gestion des données géochimiques
+  - name: Drilling
+    description: Gestion des données de sondages
+  - name: Datasets
+    description: Gestion des jeux de données
+  - name: Inversion
+    description: Calculs d'inversion géophysique
+  - name: Reports
+    description: Génération de rapports
+  - name: GIS
+    description: Couches SIG
+
+paths:
+  /projects:
+    get:
+      tags:
+        - Projects
+      summary: Liste des projets
+      description: Récupère la liste des projets avec pagination et filtres
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, COMPLETED, ARCHIVED]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Liste des projets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      projects:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Project'
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      pageSize:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    
+    post:
+      tags:
+        - Projects
+      summary: Créer un projet
+      description: Crée un nouveau projet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectInput'
+      responses:
+        '201':
+          description: Projet créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /projects/{id}:
+    get:
+      tags:
+        - Projects
+      summary: Détails d'un projet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Détails du projet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Project'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    
+    put:
+      tags:
+        - Projects
+      summary: Mettre à jour un projet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectInput'
+      responses:
+        '200':
+          description: Projet mis à jour
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    delete:
+      tags:
+        - Projects
+      summary: Supprimer un projet
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Projet supprimé
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /geochemistry/samples:
+    get:
+      tags:
+        - Geochemistry
+      summary: Liste des échantillons géochimiques
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: campaignId
+          in: query
+          schema:
+            type: string
+        - name: sampleID
+          in: query
+          schema:
+            type: string
+        - name: holeID
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Liste des échantillons
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      samples:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GeochemicalSample'
+                      total:
+                        type: integer
+    
+    post:
+      tags:
+        - Geochemistry
+      summary: Créer un échantillon géochimique
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGeochemicalSampleInput'
+      responses:
+        '201':
+          description: Échantillon créé
+
+  /drilling/holes:
+    get:
+      tags:
+        - Drilling
+      summary: Liste des trous de forage
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - name: campaignId
+          in: query
+          schema:
+            type: string
+        - name: drillType
+          in: query
+          schema:
+            type: string
+            enum: [ACORE, RAB, AUGER, RC, DIAMOND]
+      responses:
+        '200':
+          description: Liste des trous de forage
+    
+    post:
+      tags:
+        - Drilling
+      summary: Créer un trou de forage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDrillHoleInput'
+      responses:
+        '201':
+          description: Trou créé
+
+components:
+  schemas:
+    Project:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        siteLocation:
+          type: string
+        gpsCoordinates:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, ARCHIVED]
+        tags:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    
+    CreateProjectInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 1000
+        siteLocation:
+          type: string
+          maxLength: 500
+        gpsCoordinates:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+    
+    UpdateProjectInput:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        siteLocation:
+          type: string
+        status:
+          type: string
+          enum: [ACTIVE, COMPLETED, ARCHIVED]
+    
+    GeochemicalSample:
+      type: object
+      properties:
+        id:
+          type: string
+        campaignId:
+          type: string
+        sampleID:
+          type: string
+        holeID:
+          type: string
+        depth_cm:
+          type: number
+        x:
+          type: number
+        y:
+          type: number
+        z:
+          type: number
+    
+    CreateGeochemicalSampleInput:
+      type: object
+      required:
+        - campaignId
+        - sampleID
+      properties:
+        campaignId:
+          type: string
+        sampleID:
+          type: string
+        holeID:
+          type: string
+        depth_cm:
+          type: number
+    
+    CreateDrillHoleInput:
+      type: object
+      required:
+        - campaignId
+        - holeID
+        - drillType
+        - collarX
+        - collarY
+        - collarZ
+      properties:
+        campaignId:
+          type: string
+        holeID:
+          type: string
+        drillType:
+          type: string
+          enum: [ACORE, RAB, AUGER, RC, DIAMOND]
+        collarX:
+          type: number
+        collarY:
+          type: number
+        collarZ:
+          type: number
+        azimuth:
+          type: number
+        dip:
+          type: number
+
+  responses:
+    Unauthorized:
+      description: Non authentifié
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              error:
+                type: string
+                example: Non authentifié
+    
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              error:
+                type: string
+              details:
+                type: object
+    
+    NotFound:
+      description: Ressource non trouvée
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              error:
+                type: string
+                example: Ressource non trouvée
+    
+    Forbidden:
+      description: Permission refusée
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              error:
+                type: string
+                example: Permission refusée
+    
+    ServerError:
+      description: Erreur serveur
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              error:
+                type: string
+                example: Une erreur est survenue
+
+security:
+  - BearerAuth: []
+
+

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { Box, Grid3x3, Layers, Maximize2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -11,19 +11,12 @@ import { useAppStore } from '@/store/useAppStore';
 import { ModelGrid, ColorScale } from '@/types/geophysic';
 import AppLayout from '@/components/layout/AppLayout';
 import { exportToOBJ, exportToSTL, downloadFile } from '@/lib/geophysic/exports';
+import { toggleFullscreen } from '@/lib/utils/fullscreen';
+import type { VolumeVisualizationHandle } from '@/components/geophysic/visualization/VolumeVisualization';
 
 // Dynamically import VolumeVisualization to avoid SSR issues with @react-three/fiber
 const VolumeVisualization = dynamic(
-  () =>
-    import('@/components/geophysic/visualization/VolumeVisualization').then((mod) => {
-      // Ensure we get the default export
-      const Component = mod.default || mod;
-      if (!Component || typeof Component !== 'function') {
-        console.error('VolumeVisualization export:', mod);
-        throw new Error('VolumeVisualization component not found or invalid');
-      }
-      return { default: Component };
-    }),
+  () => import('@/components/geophysic/visualization/VolumeVisualization'),
   {
     ssr: false,
     loading: () => (
@@ -42,7 +35,8 @@ const VolumeVisualization = dynamic(
 );
 
 // Mock model data
-const mockModel: ModelGrid = {
+const mockModel: ModelGrid & { name?: string; gridGeometry?: any } = {
+  name: 'Modèle inversé - Résistivité 2D',
   dimensions: { x: 10, y: 10 },
   values: Array.from({ length: 100 }, () => 100 + Math.random() * 900),
   coordinates: {
@@ -56,11 +50,16 @@ const mockModel: ModelGrid = {
   },
 };
 
+type RenderMode = 'surface' | 'volume' | 'slices' | 'isosurfaces';
+
 export default function Visualization3DPage() {
   const { activeTab, setActiveTab, visualizationSettings, updateVisualizationSettings } = useAppStore();
+  const visualizationRef = useRef<HTMLDivElement>(null);
+  const volumeVisualizationRef = useRef<VolumeVisualizationHandle>(null);
 
   const [selectedModel, setSelectedModel] = useState('1');
   const [isRotating, setIsRotating] = useState(false);
+  const [renderMode, setRenderMode] = useState<RenderMode>('volume');
 
   useEffect(() => {
     if (activeTab !== 'visualization-3d') {
@@ -70,6 +69,31 @@ export default function Visualization3DPage() {
 
   const handleAutoRotate = () => {
     setIsRotating(!isRotating);
+  };
+
+  const handleFullscreen = async () => {
+    if (visualizationRef.current) {
+      try {
+        await toggleFullscreen(visualizationRef.current);
+      } catch (error) {
+        console.error('Error toggling fullscreen:', error);
+      }
+    }
+  };
+
+  const handleGridToggle = () => {
+    updateVisualizationSettings({ showGrid: !visualizationSettings.showGrid });
+  };
+
+  const handleRenderModeChange = (mode: RenderMode) => {
+    setRenderMode(mode);
+  };
+
+  const handleNewView = () => {
+    // Reset camera view - this will be handled by VolumeVisualization component
+    if (volumeVisualizationRef.current?.resetView) {
+      volumeVisualizationRef.current.resetView();
+    }
   };
 
   const handleExport = (format: 'OBJ' | 'STL' = 'OBJ') => {
@@ -132,7 +156,11 @@ export default function Visualization3DPage() {
         </div>
 
         <div className="flex gap-2">
-          <Button variant={visualizationSettings.showGrid ? 'default' : 'outline'} size="sm">
+          <Button 
+            variant={visualizationSettings.showGrid ? 'default' : 'outline'} 
+            size="sm"
+            onClick={handleGridToggle}
+          >
             <Grid3x3 className="w-4 h-4 mr-1" />
             Grille
           </Button>
@@ -140,7 +168,7 @@ export default function Visualization3DPage() {
             <Layers className={`w-4 h-4 mr-1 ${isRotating ? 'animate-spin' : ''}`} />
             Rotation auto
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleFullscreen}>
             <Maximize2 className="w-4 h-4 mr-1" />
             Plein écran
           </Button>
@@ -148,16 +176,14 @@ export default function Visualization3DPage() {
       </div>
 
       {/* Main Visualization */}
-      <div className="mb-6">
-        {VolumeVisualization && (
-          <VolumeVisualization
-            model={mockModel}
-            title={mockModel.name || 'Modèle Géophysique 3D'}
-            description="Visualisation volumétrique du modèle inversé"
-            showControls={true}
-            height={600}
-          />
-        )}
+      <div className="mb-6" ref={visualizationRef}>
+        <VolumeVisualization
+          model={mockModel}
+          title={mockModel.name || 'Modèle Géophysique 3D'}
+          description="Visualisation volumétrique du modèle inversé"
+          showControls={true}
+          ref={volumeVisualizationRef}
+        />
       </div>
 
       {/* Controls Sidebar */}
@@ -209,16 +235,32 @@ export default function Visualization3DPage() {
           <div className="space-y-2">
             <Label>Mode de rendu</Label>
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" size="sm">
+              <Button 
+                variant={renderMode === 'surface' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => handleRenderModeChange('surface')}
+              >
                 Surface
               </Button>
-              <Button variant="outline" size="sm">
+              <Button 
+                variant={renderMode === 'volume' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => handleRenderModeChange('volume')}
+              >
                 Volume
               </Button>
-              <Button variant="outline" size="sm">
+              <Button 
+                variant={renderMode === 'slices' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => handleRenderModeChange('slices')}
+              >
                 Coupes
               </Button>
-              <Button variant="outline" size="sm">
+              <Button 
+                variant={renderMode === 'isosurfaces' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => handleRenderModeChange('isosurfaces')}
+              >
                 Iso-surfaces
               </Button>
             </div>
@@ -230,7 +272,7 @@ export default function Visualization3DPage() {
                 <Download className="w-4 h-4" />
                 Exporter modèle
               </Button>
-              <Button variant="outline" className="flex-1 gap-2">
+              <Button variant="outline" className="flex-1 gap-2" onClick={handleNewView}>
                 <Box className="w-4 h-4" />
                 Nouvelle vue
               </Button>

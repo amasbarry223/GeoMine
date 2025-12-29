@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { addCSRFTokenToHeaders } from '@/lib/csrf-client';
 
 interface UseApiOptions {
   onSuccess?: (data: any) => void;
@@ -18,9 +19,18 @@ export function useApi<T = any>() {
 
   const execute = useCallback(
     async (
-      apiCall: () => Promise<Response>,
+      apiCall: () => Promise<Response> | (() => Promise<Response>),
       options: UseApiOptions = {}
     ): Promise<T | null> => {
+      // Wrap apiCall to add CSRF token if it's a fetch call
+      const wrappedApiCall = async () => {
+        const call = typeof apiCall === 'function' ? apiCall() : apiCall;
+        const response = await call;
+        
+        // If it's a fetch Response, we can't modify headers after creation
+        // So we need to ensure CSRF is added before the fetch call
+        return response;
+      };
       const {
         onSuccess,
         onError,

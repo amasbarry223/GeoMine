@@ -13,6 +13,8 @@ import {
   Trash2,
   Eye,
   BarChart3,
+  AlertCircle,
+  Archive,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,6 +43,7 @@ import { CreateDatasetModal } from '@/components/modals/CreateDatasetModal';
 import { DatasetDetailsModal } from '@/components/modals/DatasetDetailsModal';
 import { ExportDatasetModal } from '@/components/modals/ExportDatasetModal';
 import { DeleteDatasetModal } from '@/components/modals/DeleteDatasetModal';
+import { useDatasets } from '@/lib/api/queries';
 
 interface Campaign {
   id: string;
@@ -68,50 +71,7 @@ const mockSurveyLines: SurveyLine[] = [
   { id: '4', name: 'Ligne RC-004', campaignId: '3' },
 ];
 
-const mockDatasets: Dataset[] = [
-  {
-    id: '1',
-    name: 'Données résistivité - Ligne 001',
-    surveyLineId: '1',
-    dataType: DataType.RESISTIVITY,
-    sourceFormat: 'CSV',
-    fileName: 'resistivity_line001.csv',
-    fileSize: 102400,
-    rawData: [],
-    metadata: { source: 'field' },
-    isProcessed: false,
-    createdAt: new Date('2024-01-15'),
-    updatedAt: new Date('2024-01-15'),
-  },
-  {
-    id: '2',
-    name: 'Données chargeabilité - Ligne 001',
-    surveyLineId: '1',
-    dataType: DataType.CHARGEABILITY,
-    sourceFormat: 'CSV',
-    fileName: 'chargeability_line001.csv',
-    fileSize: 98000,
-    rawData: [],
-    metadata: { source: 'field' },
-    isProcessed: false,
-    createdAt: new Date('2024-01-15'),
-    updatedAt: new Date('2024-01-15'),
-  },
-  {
-    id: '3',
-    name: 'Données RES2DINV - Ligne 002',
-    surveyLineId: '2',
-    dataType: DataType.RESISTIVITY,
-    sourceFormat: 'RES2DINV',
-    fileName: 'line002.dat',
-    fileSize: 156000,
-    rawData: [],
-    metadata: { source: 'processed' },
-    isProcessed: true,
-    createdAt: new Date('2024-01-16'),
-    updatedAt: new Date('2024-01-16'),
-  },
-];
+// Mock datasets removed - now using API via useDatasets hook
 
 function getDataTypeColor(type: DataType): string {
   switch (type) {
@@ -162,17 +122,16 @@ export default function DatasetsPage() {
     }
   }, [activeTab, setActiveTab]);
 
-  const filteredDatasets = mockDatasets.filter((dataset) => {
-    // Search filter
-    const matchesSearch =
-      dataset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      dataset.fileName?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    // Type filter
-    const matchesType = filterType === 'ALL' || dataset.dataType === filterType;
-
-    return matchesSearch && matchesType;
+  // Fetch datasets from API
+  const { data: datasetsData, isLoading, error, refetch } = useDatasets({
+    search: searchQuery,
+    dataType: filterType,
+    surveyLineId: filterSurveyLine !== 'ALL' ? filterSurveyLine : undefined,
+    campaignId: filterCampaign !== 'ALL' ? filterCampaign : undefined,
   });
+
+  const datasets = datasetsData?.items || [];
+  const totalDatasets = datasetsData?.total || 0;
 
   return (
     <AppLayout
@@ -232,14 +191,14 @@ export default function DatasetsPage() {
         <Card className="bg-card/50 backdrop-blur-sm">
           <CardHeader className="pb-3">
             <CardDescription>Total Datasets</CardDescription>
-            <CardTitle className="text-2xl">{mockDatasets.length}</CardTitle>
+            <CardTitle className="text-2xl">{isLoading ? '...' : totalDatasets}</CardTitle>
           </CardHeader>
         </Card>
         <Card className="bg-card/50 backdrop-blur-sm">
           <CardHeader className="pb-3">
             <CardDescription>Résistivité</CardDescription>
             <CardTitle className="text-2xl">
-              {mockDatasets.filter((d) => d.dataType === DataType.RESISTIVITY).length}
+              {isLoading ? '...' : datasets.filter((d) => d.dataType === DataType.RESISTIVITY).length}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -247,7 +206,7 @@ export default function DatasetsPage() {
           <CardHeader className="pb-3">
             <CardDescription>Chargeabilité</CardDescription>
             <CardTitle className="text-2xl">
-              {mockDatasets.filter((d) => d.dataType === DataType.CHARGEABILITY).length}
+              {isLoading ? '...' : datasets.filter((d) => d.dataType === DataType.CHARGEABILITY).length}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -255,7 +214,9 @@ export default function DatasetsPage() {
           <CardHeader className="pb-3">
             <CardDescription>Taille Totale</CardDescription>
             <CardTitle className="text-2xl">
-              {(mockDatasets.reduce((sum, d) => sum + (d.fileSize || 0), 0) / 1024 / 1024).toFixed(2)} MB
+              {isLoading
+                ? '...'
+                : (datasets.reduce((sum, d) => sum + (d.fileSize || 0), 0) / 1024 / 1024).toFixed(2) + ' MB'}
             </CardTitle>
           </CardHeader>
         </Card>
@@ -325,8 +286,35 @@ export default function DatasetsPage() {
 
       {/* Datasets Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredDatasets.length > 0 ? (
-          filteredDatasets.map((dataset) => (
+        {isLoading ? (
+          <Card className="col-span-full flex items-center justify-center p-12">
+            <div className="text-center space-y-4">
+              <Database className="w-12 h-12 text-muted-foreground mx-auto animate-pulse" />
+              <p className="text-muted-foreground">Chargement des datasets...</p>
+            </div>
+          </Card>
+        ) : error ? (
+          <Card className="col-span-full flex items-center justify-center p-12">
+            <div className="text-center space-y-4">
+              <AlertCircle className="w-12 h-12 text-destructive mx-auto" />
+              <div>
+                <h3 className="font-semibold text-lg">Erreur de chargement</h3>
+                <p className="text-muted-foreground text-sm mt-1">
+                  {error instanceof Error ? error.message : 'Impossible de charger les datasets. Veuillez réessayer.'}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => refetch()}
+                className="gap-2"
+              >
+                <Database className="w-4 h-4" />
+                Réessayer
+              </Button>
+            </div>
+          </Card>
+        ) : datasets.length > 0 ? (
+          datasets.map((dataset) => (
             <Card
               key={dataset.id}
               className="cursor-pointer hover:border-primary/50 transition-all duration-200 bg-card/50 backdrop-blur-sm"
@@ -403,13 +391,32 @@ export default function DatasetsPage() {
                   </DropdownMenu>
                 </div>
 
-                <div className="flex items-center gap-2 mt-3">
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
                   <Badge variant="outline" className={getDataTypeColor(dataset.dataType)}>
                     {getDataTypeLabel(dataset.dataType)}
                   </Badge>
                   <Badge variant="outline" className="text-xs">
                     {dataset.sourceFormat}
                   </Badge>
+                  {(() => {
+                    try {
+                      const metadata = typeof dataset.metadata === 'string' 
+                        ? JSON.parse(dataset.metadata) 
+                        : dataset.metadata || {};
+                      if (metadata.isArchive || dataset.sourceFormat === 'ZIP') {
+                        const fileCount = metadata.filesProcessed || metadata.archiveInfo?.extractedFiles?.length || 0;
+                        return (
+                          <Badge variant="secondary" className="text-xs bg-primary/10 text-primary border-primary/20">
+                            <Archive className="w-3 h-3 mr-1" />
+                            {fileCount > 0 ? `${fileCount} fichier${fileCount > 1 ? 's' : ''}` : 'Archive ZIP'}
+                          </Badge>
+                        );
+                      }
+                    } catch {
+                      // Ignore parsing errors
+                    }
+                    return null;
+                  })()}
                   {dataset.isProcessed && (
                     <Badge variant="secondary" className="text-xs">
                       Traité
@@ -432,6 +439,30 @@ export default function DatasetsPage() {
                       {new Date(dataset.createdAt).toLocaleDateString('fr-FR')}
                     </span>
                   </div>
+                  {(() => {
+                    try {
+                      const metadata = typeof dataset.metadata === 'string' 
+                        ? JSON.parse(dataset.metadata) 
+                        : dataset.metadata || {};
+                      if (metadata.isArchive || dataset.sourceFormat === 'ZIP') {
+                        const fileCount = metadata.filesProcessed || metadata.archiveInfo?.extractedFiles?.length || 0;
+                        if (fileCount > 0) {
+                          return (
+                            <div className="col-span-2">
+                              <span className="text-muted-foreground">Fichiers extraits:</span>
+                              <span className="font-medium ml-1 flex items-center gap-1">
+                                <Archive className="w-3 h-3" />
+                                {fileCount} fichier{fileCount > 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          );
+                        }
+                      }
+                    } catch {
+                      // Ignore parsing errors
+                    }
+                    return null;
+                  })()}
                 </div>
 
                 <div className="flex gap-2">

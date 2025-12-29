@@ -1,0 +1,73 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "success": "Succès",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "export": "Exporter",
+    "import": "Importer",
+    "refresh": "Actualiser"
+  },
+  "auth": {
+    "signIn": "Se connecter",
+    "signOut": "Se déconnecter",
+    "email": "Email",
+    "password": "Mot de passe",
+    "invalidCredentials": "Email ou mot de passe incorrect",
+    "signInSuccess": "Connexion réussie"
+  },
+  "projects": {
+    "title": "Projets",
+    "create": "Créer un projet",
+    "edit": "Modifier le projet",
+    "delete": "Supprimer le projet",
+    "name": "Nom du projet",
+    "description": "Description",
+    "status": "Statut",
+    "createdAt": "Créé le",
+    "noProjects": "Aucun projet",
+    "createSuccess": "Projet créé avec succès",
+    "updateSuccess": "Projet mis à jour avec succès",
+    "deleteSuccess": "Projet supprimé avec succès"
+  },
+  "geochemistry": {
+    "title": "Géochimie",
+    "samples": "Échantillons",
+    "createSample": "Créer un échantillon",
+    "importSamples": "Importer des échantillons",
+    "sampleID": "ID Échantillon",
+    "holeID": "ID Trou",
+    "depth": "Profondeur (cm)",
+    "coordinates": "Coordonnées",
+    "createSuccess": "Échantillon créé avec succès"
+  },
+  "drilling": {
+    "title": "Sondages",
+    "holes": "Trous de forage",
+    "createHole": "Créer un trou",
+    "importHoles": "Importer des trous",
+    "holeID": "ID Trou",
+    "drillType": "Type de forage",
+    "collar": "Collar",
+    "survey": "Survey",
+    "geology": "Géologie",
+    "assays": "Analyses",
+    "structures": "Mesures structurales"
+  },
+  "errors": {
+    "notFound": "Ressource non trouvée",
+    "unauthorized": "Non authentifié",
+    "forbidden": "Permission refusée",
+    "serverError": "Erreur serveur",
+    "validationError": "Erreur de validation",
+    "networkError": "Erreur réseau"
+  }
+}
+
+

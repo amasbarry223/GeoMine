@@ -16,6 +16,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Project } from '@/types/geophysic';
 import { useApi } from '@/hooks/use-api';
+import { addCSRFTokenToHeaders } from '@/lib/csrf-client';
 
 interface DuplicateProjectModalProps {
   open: boolean;
@@ -44,47 +45,104 @@ export function DuplicateProjectModal({
   const handleDuplicate = async () => {
     if (!project || !name.trim()) return;
 
-    // Parse gpsCoordinates if it's a string
-    let parsedGpsCoordinates = null;
+    // Normalize GPS coordinates
+    // The schema accepts: string "lat,lng", object {lat, lng}, object {latitude, longitude}, or null
+    let normalizedGpsCoordinates: string | { latitude: number; longitude: number } | { lat: number; lng: number } | null = null;
+    
     if (project.gpsCoordinates) {
-      try {
-        parsedGpsCoordinates = typeof project.gpsCoordinates === 'string' 
-          ? JSON.parse(project.gpsCoordinates) 
-          : project.gpsCoordinates;
-      } catch (e) {
-        // If parsing fails, try to parse as comma-separated string
-        if (typeof project.gpsCoordinates === 'string' && project.gpsCoordinates.includes(',')) {
-          const [lat, lng] = project.gpsCoordinates.split(',').map(s => parseFloat(s.trim()));
-          if (!isNaN(lat) && !isNaN(lng)) {
-            parsedGpsCoordinates = { latitude: lat, longitude: lng };
+      if (typeof project.gpsCoordinates === 'string') {
+        const trimmed = project.gpsCoordinates.trim();
+        // Check if it's already in "lat,lng" format (matches the regex in schema)
+        if (/^-?\d+\.?\d*,-?\d+\.?\d*$/.test(trimmed)) {
+          // Keep as string format - this is what the schema expects
+          normalizedGpsCoordinates = trimmed;
+        } else {
+          // Try to parse as JSON string
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (typeof parsed === 'object' && parsed !== null) {
+              // Convert to {latitude, longitude} format (preferred format)
+              if ('latitude' in parsed && 'longitude' in parsed) {
+                normalizedGpsCoordinates = { 
+                  latitude: Number(parsed.latitude), 
+                  longitude: Number(parsed.longitude) 
+                };
+              } else if ('lat' in parsed && 'lng' in parsed) {
+                normalizedGpsCoordinates = { 
+                  lat: Number(parsed.lat), 
+                  lng: Number(parsed.lng) 
+                };
+              }
+            }
+          } catch (e) {
+            // If JSON parsing fails, try to parse as comma-separated string manually
+            if (trimmed.includes(',')) {
+              const parts = trimmed.split(',');
+              if (parts.length === 2) {
+                const lat = parseFloat(parts[0].trim());
+                const lng = parseFloat(parts[1].trim());
+                if (!isNaN(lat) && !isNaN(lng)) {
+                  // Convert to object format
+                  normalizedGpsCoordinates = { latitude: lat, longitude: lng };
+                }
+              }
+            }
           }
+        }
+      } else if (typeof project.gpsCoordinates === 'object' && project.gpsCoordinates !== null) {
+        // Already an object, ensure it has the right format
+        const coords = project.gpsCoordinates as any;
+        if ('latitude' in coords && 'longitude' in coords) {
+          normalizedGpsCoordinates = { 
+            latitude: Number(coords.latitude), 
+            longitude: Number(coords.longitude) 
+          };
+        } else if ('lat' in coords && 'lng' in coords) {
+          normalizedGpsCoordinates = { 
+            lat: Number(coords.lat), 
+            lng: Number(coords.lng) 
+          };
         }
       }
     }
 
-    // Parse tags if it's a string
-    let parsedTags = null;
+    // Normalize tags - must be array or null
+    let normalizedTags: string[] | null = null;
     if (project.tags) {
-      try {
-        parsedTags = typeof project.tags === 'string' 
-          ? JSON.parse(project.tags) 
-          : project.tags;
-      } catch (e) {
-        parsedTags = Array.isArray(project.tags) ? project.tags : [];
+      if (typeof project.tags === 'string') {
+        try {
+          const parsed = JSON.parse(project.tags);
+          normalizedTags = Array.isArray(parsed) ? parsed : null;
+        } catch (e) {
+          normalizedTags = null;
+        }
+      } else if (Array.isArray(project.tags)) {
+        normalizedTags = project.tags;
       }
     }
+
+    // Normalize description and siteLocation - must be string or null
+    const normalizedDescription = project.description && typeof project.description === 'string' 
+      ? project.description.trim() || null 
+      : null;
+    const normalizedSiteLocation = project.siteLocation && typeof project.siteLocation === 'string'
+      ? project.siteLocation.trim() || null
+      : null;
+
+    // Prepare headers with CSRF token
+    const headers = addCSRFTokenToHeaders({ 'Content-Type': 'application/json' });
 
     const result = await execute(
       () =>
         fetch('/api/projects', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             name: name.trim(),
-            description: project.description,
-            siteLocation: project.siteLocation,
-            gpsCoordinates: parsedGpsCoordinates,
-            tags: parsedTags,
+            description: normalizedDescription,
+            siteLocation: normalizedSiteLocation,
+            gpsCoordinates: normalizedGpsCoordinates,
+            tags: normalizedTags,
             duplicateFrom: project.id,
             includeCampaigns,
             includeData,

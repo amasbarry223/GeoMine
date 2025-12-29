@@ -1,22 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-// In-memory rate limit store (use Redis in production)
-interface RateLimitEntry {
-  count: number;
-  resetTime: number;
-}
-
-const rateLimitStore = new Map<string, RateLimitEntry>();
-
-// Clean up old entries every 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of rateLimitStore.entries()) {
-    if (entry.resetTime < now) {
-      rateLimitStore.delete(key);
-    }
-  }
-}, 5 * 60 * 1000);
+import { get, set, increment, exists } from './cache';
 
 export interface RateLimitConfig {
   maxRequests: number;
@@ -49,10 +32,10 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
 /**
  * Check rate limit for a given identifier (IP + path)
  */
-export function checkRateLimit(
+export async function checkRateLimit(
   identifier: string,
   path: string
-): { allowed: boolean; remaining: number; resetTime: number } {
+): Promise<{ allowed: boolean; remaining: number; resetTime: number }> {
   // Find matching rate limit config
   let config = RATE_LIMITS.default;
   for (const [route, routeConfig] of Object.entries(RATE_LIMITS)) {
@@ -62,28 +45,45 @@ export function checkRateLimit(
     }
   }
 
-  const key = `${identifier}:${path}`;
+  const key = `rate_limit:${identifier}:${path}`;
   const now = Date.now();
-  const entry = rateLimitStore.get(key);
+  const windowSeconds = Math.ceil(config.windowMs / 1000);
 
-  if (!entry || entry.resetTime < now) {
+  // Check if key exists
+  const keyExists = await exists(key);
+  
+  if (!keyExists) {
     // Create new entry
-    const newEntry: RateLimitEntry = {
-      count: 1,
-      resetTime: now + config.windowMs,
-    };
-    rateLimitStore.set(key, newEntry);
+    const resetTime = now + config.windowMs;
+    await set(key, { count: 1, resetTime }, { ttl: windowSeconds });
     return {
       allowed: true,
       remaining: config.maxRequests - 1,
-      resetTime: newEntry.resetTime,
+      resetTime,
+    };
+  }
+
+  // Get current count
+  const entry = await get<{ count: number; resetTime: number }>(key);
+  
+  if (!entry || entry.resetTime < now) {
+    // Entry expired, create new one
+    const resetTime = now + config.windowMs;
+    await set(key, { count: 1, resetTime }, { ttl: windowSeconds });
+    return {
+      allowed: true,
+      remaining: config.maxRequests - 1,
+      resetTime,
     };
   }
 
   // Increment count
-  entry.count++;
+  const newCount = await increment(`${key}:count`, 1);
+  
+  // Update entry
+  await set(key, { count: newCount, resetTime: entry.resetTime }, { ttl: windowSeconds });
 
-  if (entry.count > config.maxRequests) {
+  if (newCount > config.maxRequests) {
     return {
       allowed: false,
       remaining: 0,
@@ -93,7 +93,7 @@ export function checkRateLimit(
 
   return {
     allowed: true,
-    remaining: config.maxRequests - entry.count,
+    remaining: config.maxRequests - newCount,
     resetTime: entry.resetTime,
   };
 }
@@ -120,21 +120,22 @@ export function getRateLimitIdentifier(request: NextRequest): string {
 /**
  * Middleware function to apply rate limiting
  */
-export function applyRateLimit(request: NextRequest, path: string): NextResponse | null {
+export async function applyRateLimit(request: NextRequest, path: string): Promise<NextResponse | null> {
   const identifier = getRateLimitIdentifier(request);
-  const result = checkRateLimit(identifier, path);
+  const result = await checkRateLimit(identifier, path);
 
   if (!result.allowed) {
+    const limit = RATE_LIMITS[path]?.maxRequests || RATE_LIMITS.default.maxRequests;
     const response = NextResponse.json(
       {
         error: 'Trop de requêtes',
-        message: `Limite de ${RATE_LIMITS[path]?.maxRequests || RATE_LIMITS.default.maxRequests} requêtes par minute atteinte. Réessayez dans ${Math.ceil((result.resetTime - Date.now()) / 1000)} secondes.`,
+        message: `Limite de ${limit} requêtes par minute atteinte. Réessayez dans ${Math.ceil((result.resetTime - Date.now()) / 1000)} secondes.`,
       },
       { status: 429 }
     );
 
     // Add rate limit headers
-    response.headers.set('X-RateLimit-Limit', String(RATE_LIMITS[path]?.maxRequests || RATE_LIMITS.default.maxRequests));
+    response.headers.set('X-RateLimit-Limit', String(limit));
     response.headers.set('X-RateLimit-Remaining', String(result.remaining));
     response.headers.set('X-RateLimit-Reset', String(Math.ceil(result.resetTime / 1000)));
 

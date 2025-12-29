@@ -4,6 +4,8 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { SessionProvider } from "@/components/providers/session-provider";
+import { QueryProvider } from "@/components/providers/query-provider";
+import { CSRFProvider } from "@/components/providers/csrf-provider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -40,12 +42,16 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-background text-foreground font-sans`}
       >
-        <SessionProvider>
-          <ThemeProvider defaultTheme="dark" attribute="class">
-            {children}
-            <Toaster />
-          </ThemeProvider>
-        </SessionProvider>
+            <QueryProvider>
+              <SessionProvider>
+                <CSRFProvider>
+                  <ThemeProvider defaultTheme="dark" attribute="class">
+                    {children}
+                    <Toaster />
+                  </ThemeProvider>
+                </CSRFProvider>
+              </SessionProvider>
+            </QueryProvider>
       </body>
     </html>
   );

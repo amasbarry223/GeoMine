@@ -5,6 +5,9 @@ import { handleApiError, createErrorResponse, createSuccessResponse } from '@/li
 import { getUserFromRequest } from '@/lib/get-user-from-request';
 import { canEditProject, canDeleteProject } from '@/lib/permissions';
 import { logAuditEvent } from '@/lib/audit';
+import { updateProjectSchema, validateRequestBody } from '@/lib/validators';
+import { logApiRequest } from '@/lib/logger';
+import { validateCSRF } from '@/lib/csrf';
 
 // GET /api/projects/[id] - Get a single project by ID
 export async function GET(
@@ -12,16 +15,66 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Use select instead of include for better performance
     const project = await db.project.findUnique({
       where: { id: params.id },
-      include: {
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        siteLocation: true,
+        gpsCoordinates: true,
+        status: true,
+        tags: true,
+        createdAt: true,
+        updatedAt: true,
+        createdBy: true,
         campaigns: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            startDate: true,
+            endDate: true,
+            fieldTeam: true,
+            weatherConditions: true,
+            equipmentUsed: true,
+            createdAt: true,
+            updatedAt: true,
             surveyLines: {
-              include: {
+              select: {
+                id: true,
+                name: true,
+                lineType: true,
+                azimuth: true,
+                dipAngle: true,
+                electrodeSpacing: true,
+                numberOfElectrodes: true,
+                totalLength: true,
+                topography: true,
+                createdAt: true,
                 datasets: {
-                  include: {
-                    inversionModels: true,
+                  select: {
+                    id: true,
+                    name: true,
+                    dataType: true,
+                    sourceFormat: true,
+                    fileName: true,
+                    fileSize: true,
+                    isProcessed: true,
+                    createdAt: true,
+                    inversionModels: {
+                      select: {
+                        id: true,
+                        modelName: true,
+                        inversionType: true,
+                        algorithm: true,
+                        iterations: true,
+                        rmsError: true,
+                        convergence: true,
+                        createdAt: true,
+                      },
+                    },
                   },
                 },
               },
@@ -47,6 +100,12 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Validate CSRF token
+    const csrfValidation = validateCSRF(request);
+    if (!csrfValidation.valid) {
+      return createErrorResponse(csrfValidation.error || 'Token CSRF invalide', 403);
+    }
+
     // Get authenticated user
     const user = await getUserFromRequest(request);
     if (!user) {
@@ -59,9 +118,6 @@ export async function PUT(
       return createErrorResponse(permission.reason || 'Permission refusée', 403);
     }
 
-    const body = await request.json();
-    const { name, description, siteLocation, gpsCoordinates, tags, status } = body;
-
     // Verify project exists
     const existingProject = await db.project.findUnique({
       where: { id: params.id },
@@ -71,10 +127,13 @@ export async function PUT(
       return createErrorResponse('Projet non trouvé', 404, { projectId: params.id });
     }
 
-    // Validate name if provided
-    if (name !== undefined && (!name || name.trim().length === 0)) {
-      return createErrorResponse('Le nom du projet ne peut pas être vide', 400, { field: 'name' });
+    // Validate request body
+    const bodyValidation = await validateRequestBody(request, updateProjectSchema);
+    if (!bodyValidation.success) {
+      return createErrorResponse('Données invalides', 400, bodyValidation.details);
     }
+
+    const { name, description, siteLocation, gpsCoordinates, tags, status } = bodyValidation.data;
 
     const project = await db.project.update({
       where: { id: params.id },
@@ -110,6 +169,12 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    // Validate CSRF token
+    const csrfValidation = validateCSRF(request);
+    if (!csrfValidation.valid) {
+      return createErrorResponse(csrfValidation.error || 'Token CSRF invalide', 403);
+    }
+
     // Get authenticated user
     const user = await getUserFromRequest(request);
     if (!user) {

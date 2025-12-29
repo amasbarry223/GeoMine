@@ -1,0 +1,73 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "refresh": "Refresh"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "email": "Email",
+    "password": "Password",
+    "invalidCredentials": "Invalid email or password",
+    "signInSuccess": "Sign in successful"
+  },
+  "projects": {
+    "title": "Projects",
+    "create": "Create project",
+    "edit": "Edit project",
+    "delete": "Delete project",
+    "name": "Project name",
+    "description": "Description",
+    "status": "Status",
+    "createdAt": "Created at",
+    "noProjects": "No projects",
+    "createSuccess": "Project created successfully",
+    "updateSuccess": "Project updated successfully",
+    "deleteSuccess": "Project deleted successfully"
+  },
+  "geochemistry": {
+    "title": "Geochemistry",
+    "samples": "Samples",
+    "createSample": "Create sample",
+    "importSamples": "Import samples",
+    "sampleID": "Sample ID",
+    "holeID": "Hole ID",
+    "depth": "Depth (cm)",
+    "coordinates": "Coordinates",
+    "createSuccess": "Sample created successfully"
+  },
+  "drilling": {
+    "title": "Drilling",
+    "holes": "Drill holes",
+    "createHole": "Create hole",
+    "importHoles": "Import holes",
+    "holeID": "Hole ID",
+    "drillType": "Drill type",
+    "collar": "Collar",
+    "survey": "Survey",
+    "geology": "Geology",
+    "assays": "Assays",
+    "structures": "Structural measurements"
+  },
+  "errors": {
+    "notFound": "Resource not found",
+    "unauthorized": "Unauthorized",
+    "forbidden": "Forbidden",
+    "serverError": "Server error",
+    "validationError": "Validation error",
+    "networkError": "Network error"
+  }
+}
+
+

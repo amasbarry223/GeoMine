@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import { useProjects } from '@/lib/api/queries';
 import {
   FolderOpen,
   Search,
@@ -26,6 +28,10 @@ import { CreateProjectModal } from '@/components/modals/CreateProjectModal';
 import { EditProjectModal } from '@/components/modals/EditProjectModal';
 import { DeleteProjectModal } from '@/components/modals/DeleteProjectModal';
 import { DuplicateProjectModal } from '@/components/modals/DuplicateProjectModal';
+import { ProjectCreationWorkflow } from '@/components/workflows/ProjectCreationWorkflow';
+import { QuickActions, useQuickActions } from '@/components/navigation/QuickActions';
+import { EmptyState } from '@/components/ui/empty-state';
+import { LoadingState } from '@/components/ui/loading-state';
 
 // Mock data for demonstration
 const mockProjects: Project[] = [
@@ -108,6 +114,8 @@ function ProjectCard({
   onDelete: (project: Project) => void;
   onDuplicate: (project: Project) => void;
 }) {
+  const router = useRouter();
+  
   return (
     <Card
       className="cursor-pointer hover:border-primary/50 transition-all duration-200 bg-card/50 backdrop-blur-sm"
@@ -194,66 +202,74 @@ function ProjectCard({
 
 export default function HomePage() {
   const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { data: session, status } = useSession();
   const [searchQuery, setSearchQuery] = useState('');
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+  const [createWorkflowOpen, setCreateWorkflowOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [loading, setLoading] = useState(true);
+  
+  // Quick actions for projects page
+  const quickActions = useQuickActions({ page: 'projects' });
+  
+  // Use React Query for projects
+  const { data: projectsData, isLoading: loading, refetch } = useProjects({
+    search: searchQuery || undefined,
+  });
+  
+  const projects = useMemo(() => {
+    if (!projectsData?.projects) return mockProjects;
+    return projectsData.projects.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      siteLocation: p.siteLocation,
+      gpsCoordinates: p.gpsCoordinates ? (typeof p.gpsCoordinates === 'string' ? p.gpsCoordinates : JSON.stringify(p.gpsCoordinates)) : null,
+      status: p.status,
+      tags: p.tags ? (typeof p.tags === 'string' ? JSON.parse(p.tags) : p.tags) : [],
+      createdBy: p.createdBy,
+      createdAt: new Date(p.createdAt),
+      updatedAt: new Date(p.updatedAt),
+    }));
+  }, [projectsData]);
 
-  const filteredProjects = projects.filter(
-    (project) =>
-      project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.tags?.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
-  const fetchProjects = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('/api/projects');
-      if (!response.ok) {
-        throw new Error('Erreur lors de la récupération des projets');
-      }
-      const data = await response.json();
-      // API returns: { success: true, data: { projects: [...], total: number } }
-      const projectsList = data.data?.projects || [];
-      if (projectsList && Array.isArray(projectsList)) {
-        // Transform projects to match the Project interface
-        const transformedProjects: Project[] = projectsList.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          siteLocation: p.siteLocation,
-          gpsCoordinates: p.gpsCoordinates ? (typeof p.gpsCoordinates === 'string' ? p.gpsCoordinates : JSON.stringify(p.gpsCoordinates)) : null,
-          status: p.status,
-          tags: p.tags ? (typeof p.tags === 'string' ? JSON.parse(p.tags) : p.tags) : [],
-          createdBy: p.createdBy,
-          createdAt: new Date(p.createdAt),
-          updatedAt: new Date(p.updatedAt),
-        }));
-        setProjects(transformedProjects);
-      } else {
-        // Fallback to mock data if API fails
-        setProjects(mockProjects);
-      }
-    } catch (error) {
-      console.error('Error fetching projects:', error);
-      // Fallback to mock data on error
-      setProjects(mockProjects);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // Redirect to login if not authenticated (middleware should handle this, but this is a backup)
   useEffect(() => {
-    fetchProjects();
+    if (status === 'unauthenticated') {
+      router.push('/auth/signin?callbackUrl=/');
+    }
+  }, [status, router]);
+
+  // Listen for create project modal/workflow events
+  useEffect(() => {
+    const handleOpenCreateProject = () => {
+      setCreateModalOpen(true);
+    };
+    const handleOpenCreateProjectWorkflow = () => {
+      setCreateWorkflowOpen(true);
+    };
+    window.addEventListener('open-create-project-modal', handleOpenCreateProject);
+    window.addEventListener('open-create-project-workflow', handleOpenCreateProjectWorkflow);
+    return () => {
+      window.removeEventListener('open-create-project-modal', handleOpenCreateProject);
+      window.removeEventListener('open-create-project-workflow', handleOpenCreateProjectWorkflow);
+    };
   }, []);
 
+  const filteredProjects = useMemo(() => {
+    if (!searchQuery) return projects;
+    return projects.filter(
+      (project) =>
+        project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        project.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        project.tags?.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  }, [projects, searchQuery]);
+
   const handleRefresh = () => {
-    fetchProjects();
+    refetch();
     // Reset selected project after operations
     setSelectedProject(null);
   };
@@ -287,10 +303,7 @@ export default function HomePage() {
               className="w-64 pl-9 h-9"
             />
           </div>
-          <Button className="gap-2" onClick={() => setCreateModalOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Nouveau Projet
-          </Button>
+          <QuickActions actions={quickActions} />
         </React.Fragment>
       }
     >
@@ -345,12 +358,7 @@ export default function HomePage() {
 
             {/* Projects Grid */}
             {loading ? (
-              <Card className="flex items-center justify-center p-12">
-                <div className="text-center space-y-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
-                  <p className="text-muted-foreground">Chargement des projets...</p>
-                </div>
-              </Card>
+              <LoadingState message="Chargement des projets..." />
             ) : filteredProjects.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredProjects.map((project) => (
@@ -365,21 +373,17 @@ export default function HomePage() {
                 ))}
               </div>
             ) : (
-              <Card className="flex items-center justify-center p-12">
-                <div className="text-center space-y-4">
-                  <FolderOpen className="w-12 h-12 text-muted-foreground mx-auto" />
-                  <div>
-                    <h3 className="font-semibold text-lg">Aucun projet trouvé</h3>
-                    <p className="text-muted-foreground text-sm mt-1">
-                      Créez un nouveau projet ou modifiez votre recherche
-                    </p>
-                  </div>
+              <EmptyState
+                icon={<FolderOpen className="w-12 h-12" />}
+                title="Aucun projet trouvé"
+                description="Créez un nouveau projet ou modifiez votre recherche."
+                action={
                   <Button className="gap-2" onClick={() => setCreateModalOpen(true)}>
                     <Plus className="h-4 w-4" />
                     Nouveau Projet
                   </Button>
-                </div>
-              </Card>
+                }
+              />
             )}
           </div>
         </div>
@@ -407,6 +411,14 @@ export default function HomePage() {
         onOpenChange={setDuplicateModalOpen}
         project={selectedProject}
         onSuccess={handleRefresh}
+      />
+      <ProjectCreationWorkflow
+        open={createWorkflowOpen}
+        onOpenChange={setCreateWorkflowOpen}
+        onComplete={(projectId) => {
+          handleRefresh();
+          router.push(`/projects/${projectId}`);
+        }}
       />
     </AppLayout>
   );

@@ -19,6 +19,8 @@ import {
   Database,
   Zap,
   Cuboid,
+  FlaskConical,
+  Drill,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,20 +34,67 @@ interface NavItem {
   badge?: number;
 }
 
-const navItems: NavItem[] = [
-  { id: 'dashboard', label: 'Tableau de bord', icon: <LayoutDashboard className="w-4 h-4" /> },
-  { id: 'projects', label: 'Projets', icon: <FolderOpen className="w-4 h-4" /> },
-  { id: 'datasets', label: 'Données', icon: <Database className="w-4 h-4" /> },
-  { id: 'import', label: 'Import', icon: <Upload className="w-4 h-4" /> },
-  { id: 'preprocessing', label: 'Pré-traitement', icon: <Activity className="w-4 h-4" /> },
-  { id: 'inversion', label: 'Inversion', icon: <Zap className="w-4 h-4" /> },
-  { id: 'visualization-2d', label: 'Visualisation 2D', icon: <BarChart3 className="w-4 h-4" /> },
-  { id: 'visualization-3d', label: 'Visualisation 3D', icon: <Cuboid className="w-4 h-4" /> },
-  { id: 'gis', label: 'SIG', icon: <Map className="w-4 h-4" /> },
-  { id: 'statistics', label: 'Statistiques', icon: <FileText className="w-4 h-4" /> },
-  { id: 'reports', label: 'Rapports', icon: <FileText className="w-4 h-4" /> },
-  { id: 'settings', label: 'Paramètres', icon: <Settings className="w-4 h-4" /> },
+interface NavCategory {
+  id: string;
+  label: string;
+  items: NavItem[];
+}
+
+const navCategories: NavCategory[] = [
+  {
+    id: 'management',
+    label: 'Gestion',
+    items: [
+      { id: 'dashboard', label: 'Tableau de bord', icon: <LayoutDashboard className="w-4 h-4" /> },
+      { id: 'projects', label: 'Projets', icon: <FolderOpen className="w-4 h-4" /> },
+      { id: 'datasets', label: 'Données', icon: <Database className="w-4 h-4" /> },
+      { id: 'import', label: 'Import', icon: <Upload className="w-4 h-4" /> },
+    ],
+  },
+  {
+    id: 'analysis',
+    label: 'Analyse',
+    items: [
+      { id: 'preprocessing', label: 'Pré-traitement', icon: <Activity className="w-4 h-4" /> },
+      { id: 'inversion', label: 'Inversion', icon: <Zap className="w-4 h-4" /> },
+      { id: 'statistics', label: 'Statistiques', icon: <FileText className="w-4 h-4" /> },
+    ],
+  },
+  {
+    id: 'visualization',
+    label: 'Visualisation',
+    items: [
+      { id: 'visualization-2d', label: 'Visualisation 2D', icon: <BarChart3 className="w-4 h-4" /> },
+      { id: 'visualization-3d', label: 'Visualisation 3D', icon: <Cuboid className="w-4 h-4" /> },
+    ],
+  },
+  {
+    id: 'data-types',
+    label: 'Types de Données',
+    items: [
+      { id: 'geochemistry', label: 'Géochimie', icon: <FlaskConical className="w-4 h-4" /> },
+      { id: 'drilling', label: 'Sondages', icon: <Drill className="w-4 h-4" /> },
+      { id: 'gis', label: 'SIG', icon: <Map className="w-4 h-4" /> },
+    ],
+  },
+  {
+    id: 'output',
+    label: 'Rapports',
+    items: [
+      { id: 'reports', label: 'Rapports', icon: <FileText className="w-4 h-4" /> },
+    ],
+  },
+  {
+    id: 'settings',
+    label: 'Paramètres',
+    items: [
+      { id: 'settings', label: 'Paramètres', icon: <Settings className="w-4 h-4" /> },
+    ],
+  },
 ];
+
+// Flatten for backward compatibility
+const navItems: NavItem[] = navCategories.flatMap((category) => category.items);
 
 // Mapping des IDs de navigation vers les routes Next.js
 const getRouteForNavItem = (navItemId: string): string => {
@@ -58,6 +107,8 @@ const getRouteForNavItem = (navItemId: string): string => {
     'inversion': '/inversion',
     'visualization-2d': '/visualization-2d',
     'visualization-3d': '/visualization-3d',
+    'geochemistry': '/geochemistry',
+    'drilling': '/drilling',
     'gis': '/gis',
     'statistics': '/statistics',
     'reports': '/reports',
@@ -69,6 +120,8 @@ const getRouteForNavItem = (navItemId: string): string => {
 // Mapping inverse : route vers ID de navigation
 const getNavItemIdForRoute = (pathname: string): string => {
   if (pathname === '/') return 'projects';
+  if (pathname.startsWith('/geochemistry')) return 'geochemistry';
+  if (pathname.startsWith('/drilling')) return 'drilling';
   const routeToIdMap: Record<string, string> = {
     '/datasets': 'datasets',
     '/import': 'import',
@@ -123,28 +176,32 @@ export function Sidebar() {
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-4">
         <nav className="space-y-1">
-          {navItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => handleNavClick(item.id)}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                activeTab === item.id
-                  ? 'bg-primary/15 text-primary font-medium'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-            >
-              {item.icon}
-              {sidebarOpen && (
-                <>
-                  <span className="flex-1 text-left">{item.label}</span>
-                  {item.badge && (
-                    <Badge variant="secondary" className="text-xs">
-                      {item.badge}
-                    </Badge>
+          {navCategories.map((category) => (
+            <div key={category.id} className="space-y-1">
+              {category.items.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => handleNavClick(item.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    activeTab === item.id
+                      ? 'bg-primary/15 text-primary font-medium'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  {item.icon}
+                  {sidebarOpen && (
+                    <>
+                      <span className="flex-1 text-left">{item.label}</span>
+                      {item.badge && (
+                        <Badge variant="secondary" className="text-xs">
+                          {item.badge}
+                        </Badge>
+                      )}
+                    </>
                   )}
-                </>
-              )}
-            </button>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
       </ScrollArea>

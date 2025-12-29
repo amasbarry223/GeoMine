@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { logError } from './logger';
 
 export interface ApiError {
   success: false;
@@ -57,7 +58,7 @@ export function createSuccessResponse<T>(
  * Handle API errors with logging
  */
 export function handleApiError(error: unknown, context: string): NextResponse<ApiError> {
-  console.error(`[${context}] Error:`, error);
+  logError(`[${context}] Error`, error, { context });
 
   if (error instanceof Error) {
     // Don't expose internal error messages in production

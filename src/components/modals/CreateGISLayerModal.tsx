@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { GISType } from '@/types/geophysic';
+import { useCreateGISLayer } from '@/lib/api/queries-gis';
 
 interface CreateGISLayerModalProps {
   open: boolean;
@@ -38,6 +39,7 @@ export function CreateGISLayerModal({
   const [layerType, setLayerType] = useState<GISType>(GISType.CUSTOM);
   const [description, setDescription] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const createMutation = useCreateGISLayer();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -55,28 +57,23 @@ export function CreateGISLayerModal({
     if (description) formData.append('description', description);
     formData.append('file', file);
 
-    try {
-      const response = await fetch('/api/gis/layers', {
-        method: 'POST',
-        body: formData,
-      });
+    const formDataObj = {
+      projectId: '1', // TODO: Get from context
+      name: name.trim(),
+      layerType,
+      description: description || undefined,
+      data: {}, // Will be populated from file parsing
+    };
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Erreur lors de la création de la couche');
-      }
-
-      if (onSuccess) onSuccess();
-      onOpenChange(false);
-      
-      // Reset form
-      setName('');
-      setDescription('');
-      setFile(null);
-    } catch (error) {
-      console.error('Error creating GIS layer:', error);
-      alert(error instanceof Error ? error.message : 'Erreur lors de la création de la couche');
-    }
+    createMutation.mutate(formDataObj, {
+      onSuccess: () => {
+        if (onSuccess) onSuccess();
+        onOpenChange(false);
+        setName('');
+        setDescription('');
+        setFile(null);
+      },
+    });
   };
 
   const layerTypes = [
@@ -178,8 +175,8 @@ export function CreateGISLayerModal({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={!name.trim() || !file}>
-              Créer la couche
+            <Button type="submit" disabled={!name.trim() || !file || createMutation.isPending}>
+              {createMutation.isPending ? 'Création...' : 'Créer la couche'}
             </Button>
           </DialogFooter>
         </form>
